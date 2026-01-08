@@ -1,19 +1,10 @@
 # XC Afrique Backend
 
-Backend API pour **XC Afrique – Le Cross-check de l'info aérienne**, un blog professionnel développé avec Node.js, Express et MongoDB.
+Backend API minimal et évolutif pour **XC Afrique – Le Cross-check de l'info aérienne**.
 
-## 🚀 Fonctionnalités
+## 🎯 Objectif
 
-- ✅ **Gestion des articles** : CRUD complet (création, lecture, modification, suppression)
-- ✅ **Gestion des catégories** : Organisation des articles par thème
-- ✅ **Authentification admin** : Système de login/logout avec JWT
-- ✅ **Formulaire de contact** : Stockage des messages de contact avec notifications email
-- ✅ **Newsletter** : Système d'abonnement à la newsletter avec gestion des abonnés
-- ✅ **Notifications temps réel** : Server-Sent Events (SSE) pour les notifications en temps réel
-- ✅ **Envoi d'emails** : Service d'envoi d'emails avec templates HTML
-- ✅ **API REST sécurisée** : Prête pour le frontend React
-- ✅ **Sécurité** : CORS, Helmet, rate limiting, validation des entrées
-- ✅ **Gestion des erreurs** : Messages clairs et structurés
+Backend conçu comme une **couche d'exposition API** pour le frontend React. Les articles sont générés via n8n + IA + GitHub, et publiés sans CMS.
 
 ## 📋 Prérequis
 
@@ -23,16 +14,14 @@ Backend API pour **XC Afrique – Le Cross-check de l'info aérienne**, un blog 
 
 ## 🛠️ Installation
 
-1. **Cloner le repository** (si applicable) ou naviguer dans le dossier du projet
-
-2. **Installer les dépendances**
+1. **Installer les dépendances**
    ```bash
    npm install
    ```
 
-3. **Configurer les variables d'environnement**
+2. **Configurer les variables d'environnement**
    ```bash
-   cp .env.example .env
+   cp env.example .env
    ```
    
    Puis éditer le fichier `.env` avec vos configurations :
@@ -43,19 +32,9 @@ Backend API pour **XC Afrique – Le Cross-check de l'info aérienne**, un blog 
    JWT_SECRET=votre_secret_jwt_tres_securise
    JWT_EXPIRE=7d
    FRONTEND_URL=http://localhost:3000
-   CONTACT_EMAIL=contact@xcafrique.org
-   NEWSLETTER_EMAIL=news@xcafrique.org
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USER=votre_email@gmail.com
-   SMTP_PASSWORD=votre_mot_de_passe_app
    ```
 
-4. **Démarrer MongoDB**
-   - Si MongoDB est installé localement, assurez-vous qu'il est en cours d'exécution
-   - Ou utilisez MongoDB Atlas et mettez à jour `MONGODB_URI` dans `.env`
-
-5. **Lancer le serveur**
+3. **Démarrer le serveur**
    ```bash
    npm start
    ```
@@ -71,94 +50,39 @@ Le serveur sera accessible sur `http://localhost:5000`
 
 ### Articles
 
-- `GET /api/articles` - Lister tous les articles (avec pagination et filtres)
-- `GET /api/articles/search/suggestions` - Obtenir des suggestions d'articles pour la barre de recherche
-- `GET /api/articles/:id` - Obtenir un article par ID
-- `POST /api/articles` - Créer un article (admin uniquement)
-- `PUT /api/articles/:id` - Modifier un article (admin uniquement)
-- `DELETE /api/articles/:id` - Supprimer un article (admin uniquement)
+- `GET /api/articles` - Lister tous les articles publiés (avec pagination et filtres)
+- `GET /api/articles/:slug` - Obtenir un article par son slug
 
 **Paramètres de requête pour GET /api/articles :**
-- `category` : Filtrer par catégorie (ID)
-- `status` : Filtrer par statut (draft, published) - admin uniquement
+- `category` : Filtrer par catégorie (slug ou ID)
 - `page` : Numéro de page (défaut: 1)
 - `limit` : Nombre d'articles par page (défaut: 10)
-- `search` : Recherche textuelle
+- `search` : Recherche textuelle dans le titre, contenu, excerpt et tags
 
-**Paramètres de requête pour GET /api/articles/search/suggestions :**
-- `q` : Terme de recherche (optionnel, si absent retourne les articles récents)
-- `limit` : Nombre de suggestions à retourner (défaut: 5)
-
-**Exemple d'utilisation des suggestions :**
+**Exemple de réponse :**
+```json
+{
+  "success": true,
+  "count": 10,
+  "total": 50,
+  "page": 1,
+  "pages": 5,
+  "data": [...]
+}
 ```
-GET /api/articles/search/suggestions?q=aviation&limit=5
-```
-Retourne jusqu'à 5 articles dont le titre, le résumé ou les tags correspondent à "aviation", priorisant les correspondances dans le titre.
 
-### Catégories
-
-- `GET /api/categories` - Lister toutes les catégories
-- `GET /api/categories/:id` - Obtenir une catégorie par ID
-- `POST /api/categories` - Créer une catégorie (admin uniquement)
-- `PUT /api/categories/:id` - Modifier une catégorie (admin uniquement)
-- `DELETE /api/categories/:id` - Supprimer une catégorie (admin uniquement)
-
-### Authentification
-
-- `POST /api/auth/login` - Connexion admin
-  ```json
-  {
-    "email": "admin@xcafrique.com",
-    "password": "motdepasse"
-  }
-  ```
-- `GET /api/auth/me` - Obtenir les informations de l'utilisateur connecté (authentifié)
-- `POST /api/auth/logout` - Déconnexion (authentifié)
-
-### Contact
-
-- `POST /api/contact` - Envoyer un message via le formulaire de contact
-  ```json
-  {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "subject": "Question",
-    "message": "Votre message ici",
-    "phone": "0123456789" // optionnel
-  }
-  ```
-- `GET /api/contact` - Lister tous les messages (admin uniquement)
-- `GET /api/contact/:id` - Obtenir un message par ID (admin uniquement)
-- `PUT /api/contact/:id/status` - Mettre à jour le statut d'un message (admin uniquement)
-
-### Newsletter
-
-- `POST /api/newsletter/subscribe` - S'abonner à la newsletter
-  ```json
-  {
-    "email": "user@example.com",
-    "name": "Nom de l'utilisateur" // optionnel
-  }
-  ```
-- `POST /api/newsletter/unsubscribe` - Se désabonner de la newsletter
-  ```json
-  {
-    "email": "user@example.com"
-  }
-  ```
-- `GET /api/newsletter/subscribers` - Lister tous les abonnés (admin uniquement)
-- `GET /api/newsletter/subscribers/:id` - Obtenir un abonné par ID (admin uniquement)
-- `GET /api/newsletter/stream` - Connexion SSE pour recevoir les notifications en temps réel
-- `GET /api/newsletter/stream/stats` - Statistiques des connexions SSE
-
-## 🔐 Authentification
-
-L'API utilise JWT (JSON Web Tokens) pour l'authentification. 
-
-Pour accéder aux routes protégées, inclure le token dans le header :
-```
-Authorization: Bearer <votre_token_jwt>
-```
+**Champs d'un article :**
+- `title` : Titre de l'article
+- `slug` : Slug unique (généré automatiquement)
+- `excerpt` : Résumé court
+- `content` : Contenu complet (HTML ou Markdown)
+- `category` : Catégorie (référence)
+- `author` : Auteur
+- `featuredImage` : URL de l'image principale
+- `tags` : Tableau de tags
+- `publishedAt` : Date de publication
+- `views` : Nombre de vues
+- `status` : Statut (draft, published)
 
 ## 📝 Structure du projet
 
@@ -167,57 +91,22 @@ xcafrique-backend/
 ├── config/
 │   └── database.js          # Configuration MongoDB
 ├── controllers/
-│   ├── articleController.js # Logique métier des articles
-│   ├── categoryController.js# Logique métier des catégories
-│   ├── authController.js    # Logique d'authentification
-│   ├── contactController.js # Logique des messages de contact
-│   └── newsletterController.js # Logique de la newsletter
+│   └── articleController.js # Logique métier des articles
 ├── middleware/
-│   ├── auth.js              # Middleware d'authentification JWT
+│   ├── auth.js              # Middleware d'authentification JWT (pour routes futures)
 │   ├── validation.js        # Middleware de validation
 │   └── errorHandler.js      # Gestionnaire d'erreurs global
 ├── models/
 │   ├── Article.js           # Modèle Mongoose Article
-│   ├── Category.js          # Modèle Mongoose Category
-│   ├── User.js              # Modèle Mongoose User
-│   ├── Contact.js           # Modèle Mongoose Contact
-│   └── Newsletter.js        # Modèle Mongoose Newsletter
+│   └── Category.js          # Modèle Mongoose Category
 ├── routes/
-│   ├── articleRoutes.js     # Routes des articles
-│   ├── categoryRoutes.js    # Routes des catégories
-│   ├── authRoutes.js        # Routes d'authentification
-│   ├── contactRoutes.js     # Routes de contact
-│   └── newsletterRoutes.js  # Routes de la newsletter
+│   └── articleRoutes.js     # Routes des articles
 ├── services/
-│   └── sseService.js         # Service Server-Sent Events
-├── utils/
-│   ├── emailService.js       # Service d'envoi d'emails
-│   └── contentManager.js     # Gestionnaire de contenu automatique
+│   └── sseService.js         # Service Server-Sent Events (optionnel)
 ├── .env.example             # Exemple de fichier d'environnement
-├── .gitignore               # Fichiers à ignorer par Git
 ├── package.json             # Dépendances et scripts
 ├── README.md                # Documentation
 └── server.js                # Point d'entrée de l'application
-```
-
-## 🧪 Données de test
-
-Pour créer un utilisateur admin de test, vous pouvez utiliser un script ou créer manuellement via MongoDB :
-
-```javascript
-// Script pour créer un admin (à exécuter une fois)
-const User = require('./models/User');
-const bcrypt = require('bcryptjs');
-
-async function createAdmin() {
-  const admin = await User.create({
-    username: 'admin',
-    email: 'admin@xcafrique.com',
-    password: 'admin123', // Sera automatiquement hashé
-    role: 'admin'
-  });
-  console.log('Admin créé:', admin);
-}
 ```
 
 ## 🔒 Sécurité
@@ -225,106 +114,45 @@ async function createAdmin() {
 - **Helmet** : Protection contre les vulnérabilités HTTP
 - **CORS** : Configuration pour autoriser uniquement le frontend autorisé
 - **Rate Limiting** : Limitation du nombre de requêtes par IP
-- **JWT** : Authentification sécurisée avec tokens
 - **Validation** : Validation des entrées avec express-validator
-- **Hashing** : Mots de passe hashés avec bcryptjs
+- **Variables d'environnement** : Aucune clé API en dur
 
 ## 📦 Dépendances principales
 
 - **express** : Framework web
 - **mongoose** : ODM pour MongoDB
-- **jsonwebtoken** : Authentification JWT
-- **bcryptjs** : Hashing des mots de passe
-- **express-validator** : Validation des données
 - **helmet** : Sécurité HTTP
 - **cors** : Gestion CORS
 - **express-rate-limit** : Limitation de débit
 - **dotenv** : Variables d'environnement
-- **morgan** : Logging HTTP
-- **nodemailer** : Envoi d'emails
+- **morgan** : Logging HTTP (développement uniquement)
 
-## 🐛 Dépannage
+## 🚀 Déploiement
 
-### Erreur de connexion MongoDB
-- Vérifiez que MongoDB est en cours d'exécution
-- Vérifiez l'URI dans `.env`
-- Vérifiez les permissions de connexion
+Le backend est prêt pour le déploiement sur :
+- **Vercel** : Configuration automatique via `vercel.json` (à créer si nécessaire)
+- **Railway** : Déploiement direct depuis GitHub
+- **Render** : Déploiement avec variables d'environnement
 
-### Erreur JWT
-- Vérifiez que `JWT_SECRET` est défini dans `.env`
-- Assurez-vous que le token est inclus dans le header `Authorization`
+**Variables d'environnement requises en production :**
+- `PORT` : Port du serveur (généralement défini automatiquement)
+- `NODE_ENV=production`
+- `MONGODB_URI` : URI de connexion MongoDB
+- `JWT_SECRET` : Secret JWT sécurisé
+- `FRONTEND_URL` : URL du frontend en production
 
-### Port déjà utilisé
-- Changez le `PORT` dans `.env`
-- Ou arrêtez le processus utilisant le port
+## 🔄 Prochaines étapes recommandées
 
-## 🤖 ContentManager - Génération automatique de contenu
-
-Le projet inclut un module `ContentManager` qui automatise la sauvegarde de contenu (articles, catégories) dans MongoDB via l'API REST.
-
-### Utilisation rapide
-
-```javascript
-const ContentManager = require('./utils/contentManager');
-
-const manager = new ContentManager();
-await manager.authenticate();
-
-// Créer un article
-await manager.createOrUpdateArticle({
-  title: 'Titre',
-  slug: 'titre',
-  content: 'Contenu...',
-  summary: 'Résumé',
-  categorySlug: 'categorie-slug',
-  tags: ['tag1', 'tag2'],
-  author: 'Admin XC Afrique',
-  publishedAt: new Date().toISOString(),
-  status: 'published'
-});
-```
-
-### Configuration
-
-Ajoutez dans `.env` :
-```env
-API_BASE_URL=http://localhost:5000/api
-CURSOR_TOKEN=votre_token_jwt  # Optionnel
-ADMIN_EMAIL=admin@xcafrique.com
-ADMIN_PASSWORD=admin123
-```
-
-📚 **Documentation complète** : Voir `utils/README.md`
-
-## 📡 Notifications en temps réel (SSE)
-
-Le backend supporte les Server-Sent Events (SSE) pour notifier le frontend en temps réel lorsqu'un nouvel abonné s'inscrit à la newsletter.
-
-### Utilisation
-
-```javascript
-// Frontend
-const eventSource = new EventSource('http://localhost:5000/api/newsletter/stream');
-
-eventSource.addEventListener('new_subscriber', (event) => {
-  const subscriber = JSON.parse(event.data);
-  console.log('Nouvel abonné:', subscriber.email, subscriber.createdAt);
-});
-```
-
-**Endpoint SSE :** `GET /api/newsletter/stream`
-
-📚 **Documentation complète** : Voir `SSE_DOCUMENTATION.md`
+1. **Intégration avec n8n** : Configurer le workflow pour publier automatiquement les articles depuis GitHub
+2. **Cache** : Ajouter un système de cache (Redis) pour améliorer les performances
+3. **CDN** : Configurer un CDN pour les images et assets statiques
+4. **Monitoring** : Ajouter des outils de monitoring (Sentry, LogRocket, etc.)
+5. **Tests** : Ajouter des tests unitaires et d'intégration
 
 ## 📄 Licence
 
 ISC
 
-## 👥 Support
-
-Pour toute question ou problème, veuillez ouvrir une issue sur le repository.
-
 ---
 
 **XC Afrique – Le Cross-check de l'info aérienne** ✈️
-

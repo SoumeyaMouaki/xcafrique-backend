@@ -6,12 +6,12 @@ const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
 
-  // Log de l'erreur pour le débogage
-  console.error('❌ Erreur:', err.message || err);
+  // Log de l'erreur pour le débogage (uniquement en développement)
   if (process.env.NODE_ENV === 'development') {
-    console.error('   Stack:', err.stack);
-    console.error('   URL:', req.originalUrl);
-    console.error('   Method:', req.method);
+    console.error('Erreur:', err.message || err);
+    console.error('Stack:', err.stack);
+    console.error('URL:', req.originalUrl);
+    console.error('Method:', req.method);
   }
 
   // Erreur CORS

@@ -66,7 +66,9 @@ const authenticate = async (req, res, next) => {
       });
     }
 
-    console.error('Erreur d\'authentification:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Erreur d\'authentification:', error);
+    }
     res.status(500).json({
       success: false,
       message: 'Erreur lors de l\'authentification'
