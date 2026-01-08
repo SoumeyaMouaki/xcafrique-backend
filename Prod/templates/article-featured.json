@@ -1,0 +1,13 @@
+{
+  "title": "Titre de l'article mis en avant",
+  "excerpt": "Résumé court de l'article mis en avant. Cet article sera affiché de manière prominente sur la page d'accueil.",
+  "content": "<p>Contenu complet de l'article en HTML ou Markdown.</p><p>Les articles mis en avant sont généralement des contenus importants ou des actualités majeures.</p><h2>Section importante</h2><p>Développez votre contenu ici...</p>",
+  "category": "Nom de la catégorie",
+  "author": "Admin XC Afrique",
+  "featuredImage": "assets/images/nom-image-featured.jpg",
+  "tags": ["featured", "actualité", "important"],
+  "status": "draft",
+  "featured": true,
+  "publishedAt": null
+}
+

@@ -1,0 +1,13 @@
+{
+  "title": "Titre de l'article standard",
+  "excerpt": "Résumé court de l'article qui donne un aperçu du contenu. Ce résumé apparaîtra dans les listes d'articles et les aperçus.",
+  "content": "<p>Contenu complet de l'article en HTML ou Markdown.</p><p>Vous pouvez structurer votre contenu avec des paragraphes, des listes, des images, etc.</p><h2>Sous-titre</h2><p>Plus de contenu...</p>",
+  "category": "Nom de la catégorie",
+  "author": "Admin XC Afrique",
+  "featuredImage": "assets/images/nom-image.jpg",
+  "tags": ["tag1", "tag2", "tag3"],
+  "status": "draft",
+  "featured": false,
+  "publishedAt": null
+}
+

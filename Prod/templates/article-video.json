@@ -1,0 +1,14 @@
+{
+  "title": "Titre de l'article avec vidéo",
+  "excerpt": "Résumé court de l'article contenant une vidéo intégrée. Ce type d'article est idéal pour les tutoriels, interviews ou reportages vidéo.",
+  "content": "<p>Introduction de l'article avec vidéo.</p><div class=\"video-container\"><iframe src=\"https://www.youtube.com/embed/VIDEO_ID\" frameborder=\"0\" allowfullscreen></iframe></div><p>Description et analyse de la vidéo...</p><h2>Points clés</h2><ul><li>Point important 1</li><li>Point important 2</li><li>Point important 3</li></ul>",
+  "category": "Nom de la catégorie",
+  "author": "Admin XC Afrique",
+  "featuredImage": "assets/images/nom-image-video.jpg",
+  "tags": ["vidéo", "tutoriel", "multimédia"],
+  "status": "draft",
+  "featured": false,
+  "publishedAt": null,
+  "videoUrl": "https://www.youtube.com/watch?v=VIDEO_ID"
+}
+

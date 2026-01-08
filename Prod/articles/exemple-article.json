@@ -1,0 +1,13 @@
+{
+  "title": "Exemple d'article pour XC Afrique",
+  "excerpt": "Cet article sert d'exemple pour comprendre la structure et le format attendu pour les articles du blog XC Afrique. Il montre tous les champs disponibles et leur utilisation.",
+  "content": "<h1>Introduction</h1><p>Ceci est un exemple d'article complet qui illustre la structure JSON attendue pour tous les articles du blog XC Afrique.</p><h2>Structure du contenu</h2><p>Le contenu peut être formaté en HTML ou en Markdown selon vos préférences. Vous pouvez inclure :</p><ul><li>Des paragraphes</li><li>Des listes à puces ou numérotées</li><li>Des images</li><li>Des liens</li><li>Des citations</li></ul><h2>Exemple de citation</h2><blockquote><p>Une citation importante peut être mise en évidence de cette manière.</p></blockquote><h2>Conclusion</h2><p>N'oubliez pas de respecter la structure JSON et de remplir tous les champs obligatoires avant de publier votre article.</p>",
+  "category": "Exemple",
+  "author": "Admin XC Afrique",
+  "featuredImage": "assets/images/exemple-image.jpg",
+  "tags": ["exemple", "documentation", "guide"],
+  "status": "draft",
+  "featured": false,
+  "publishedAt": null
+}
+
