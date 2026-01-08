@@ -6,6 +6,13 @@ const mongoose = require('mongoose');
  */
 const connectDB = async () => {
   try {
+    // Vérifier que MONGODB_URI est défini
+    if (!process.env.MONGODB_URI) {
+      console.error('❌ Erreur: MONGODB_URI n\'est pas défini dans les variables d\'environnement');
+      console.error('   Configurez MONGODB_URI dans votre fichier .env ou dans les variables d\'environnement de votre plateforme de déploiement');
+      process.exit(1);
+    }
+
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       // Options recommandées pour Mongoose 6+
       // Les options useNewUrlParser et useUnifiedTopology sont maintenant par défaut

@@ -34,42 +34,42 @@ setInterval(() => {
 app.use(helmet()); // Protège contre diverses vulnérabilités HTTP
 
 // Configuration CORS
-// Autoriser plusieurs origines pour le développement (React, Vite, etc.)
-const allowedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(',')
-  : [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:5174',
-      'http://localhost:5175'
-    ];
-
-app.use(cors({
+// En développement, autoriser toutes les origines localhost
+// En production, utiliser FRONTEND_URL
+const corsOptions = {
   origin: function (origin, callback) {
-    // Autoriser les requêtes sans origine (Postman, mobile apps, etc.) en développement
-    if (!origin && process.env.NODE_ENV === 'development') {
-      return callback(null, true);
-    }
-    
-    // Si pas d'origine spécifiée, autoriser en développement
-    if (!origin) {
-      if (process.env.NODE_ENV === 'development') {
+    // En développement, autoriser toutes les origines localhost
+    if (process.env.NODE_ENV === 'development') {
+      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
         return callback(null, true);
       }
+    }
+    
+    // En production, utiliser FRONTEND_URL
+    if (process.env.NODE_ENV === 'production') {
+      const allowedOrigins = process.env.FRONTEND_URL 
+        ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+        : [];
+      
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      console.warn(`⚠️  Origine non autorisée: ${origin}`);
+      console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
+      
       return callback(new Error('Non autorisé par CORS'));
     }
     
-    // Vérifier si l'origine est autorisée
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Non autorisé par CORS'));
-    }
+    // Par défaut, autoriser
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting pour éviter les abus
 const limiter = rateLimit({

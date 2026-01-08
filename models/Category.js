@@ -16,7 +16,8 @@ const categorySchema = new mongoose.Schema({
     type: String,
     unique: true,
     lowercase: true,
-    trim: true
+    trim: true,
+    index: true
   },
   description: {
     type: String,
@@ -37,7 +38,7 @@ const categorySchema = new mongoose.Schema({
 });
 
 // Index pour améliorer les performances
-categorySchema.index({ slug: 1 });
+// Note: slug a déjà un index via unique: true, on ne le redéfinit pas
 categorySchema.index({ isActive: 1 });
 
 // Middleware pre-save pour générer le slug

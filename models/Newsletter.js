@@ -50,7 +50,7 @@ const newsletterSchema = new mongoose.Schema({
 });
 
 // Index pour améliorer les performances
-newsletterSchema.index({ email: 1 }, { unique: true });
+// Note: email a déjà un index unique via unique: true dans le schéma
 newsletterSchema.index({ confirmationToken: 1 });
 newsletterSchema.index({ confirmed: 1, createdAt: -1 });
 newsletterSchema.index({ unsubscribedAt: 1 });
