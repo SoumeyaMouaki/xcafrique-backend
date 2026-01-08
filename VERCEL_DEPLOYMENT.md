@@ -100,28 +100,21 @@ Utilisez uniquement pour les variables non sensibles :
 
 ### Fichier `vercel.json` (optionnel)
 
-Créez un fichier `vercel.json` à la racine du projet :
+Le fichier `vercel.json` est déjà créé avec la configuration minimale :
 
 ```json
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "server.js",
-      "use": "@vercel/node"
-    }
-  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "server.js"
+      "dest": "/server.js"
     }
-  ],
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
 ```
+
+**Note :** Vercel détecte automatiquement les projets Node.js, donc la section `builds` n'est pas nécessaire. Cela évite les warnings dans les logs de déploiement.
 
 ### Scripts `package.json`
 

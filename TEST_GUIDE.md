@@ -11,7 +11,7 @@
    - Configurer au minimum :
      ```env
      MONGODB_URI=mongodb://localhost:27017/xcafrique
-     JWT_SECRET=votre_secret
+     JWT_SECRET=2005Xad5
      CONTACT_EMAIL=contact@xcafrique.org
      NEWSLETTER_EMAIL=news@xcafrique.org
      ```
