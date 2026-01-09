@@ -11,10 +11,10 @@ const sseService = require('./services/sseService');
 // Import des routes
 const articleRoutes = require('./routes/articleRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
-// Routes optionnelles (à activer si nécessaire)
+// Routes optionnelles (activées car utilisées par le frontend)
 // const authRoutes = require('./routes/authRoutes');
-// const contactRoutes = require('./routes/contactRoutes');
-// const newsletterRoutes = require('./routes/newsletterRoutes');
+const contactRoutes = require('./routes/contactRoutes');
+const newsletterRoutes = require('./routes/newsletterRoutes');
 
 // Initialiser l'application Express
 const app = express();
@@ -57,7 +57,8 @@ const getAllowedOrigins = () => {
   return [
     'https://xcafrique.org',
     'https://www.xcafrique.org',
-    'https://xcafrique-frontend.vercel.app'
+    'https://xcafrique-frontend.vercel.app',
+    'https://*.vercel.app'  // Support des preview deployments Vercel
   ];
 };
 
@@ -151,10 +152,10 @@ app.get('/', (req, res) => {
 // Routes API
 app.use('/api/articles', articleRoutes);
 app.use('/api/categories', categoryRoutes);
-// Routes optionnelles (à activer si nécessaire)
+// Routes optionnelles (activées car utilisées par le frontend)
 // app.use('/api/auth', authRoutes);
- app.use('/api/contact', contactRoutes);
- app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/contact', contactRoutes);
+app.use('/api/newsletter', newsletterRoutes);
 
 // Route 404 pour les endpoints non trouvés
 app.use('*', (req, res) => {
