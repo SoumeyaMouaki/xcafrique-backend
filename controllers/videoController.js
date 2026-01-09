@@ -2,36 +2,29 @@ const Article = require('../models/Article');
 const Category = require('../models/Category');
 
 /**
- * Controller pour la gestion des articles
- * Contient toute la logique métier pour les opérations CRUD sur les articles
+ * Controller pour la gestion des vidéos
+ * Les vidéos sont des articles avec un champ videoUrl
  */
 
 /**
- * @route   GET /api/articles
- * @desc    Récupérer tous les articles (avec filtres optionnels)
+ * @route   GET /api/videos
+ * @desc    Récupérer toutes les vidéos (articles avec videoUrl)
  * @access  Public
  */
-exports.getAllArticles = async (req, res, next) => {
+exports.getAllVideos = async (req, res, next) => {
   try {
     const { 
       category, 
-      status = 'published', 
       page = 1, 
-      limit = 10,
-      search,
-      type  // Nouveau paramètre: 'video' pour filtrer les vidéos
+      limit = 6,  // Par défaut, limiter à 6 vidéos
+      search 
     } = req.query;
 
-    // Construire le filtre
-    const filter = {};
-    
-    // Ne montrer que les articles publiés (API publique)
-    filter.status = 'published';
-    
-    // Filtrer par type (vidéos uniquement)
-    if (type === 'video') {
-      filter.videoUrl = { $exists: true, $ne: '' };
-    }
+    // Construire le filtre pour les vidéos uniquement
+    const filter = {
+      status: 'published',
+      videoUrl: { $exists: true, $ne: '' }  // Uniquement les articles avec videoUrl
+    };
 
     // Filtrer par catégorie si fourni (slug ou ID)
     if (category) {
@@ -60,8 +53,6 @@ exports.getAllArticles = async (req, res, next) => {
 
     // Recherche textuelle si fournie
     if (search) {
-      // Utiliser une recherche regex insensible à la casse sur title, content et excerpt
-      // Plus flexible que $text et fonctionne sans index textuel
       const searchRegex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [
         { title: searchRegex },
@@ -76,28 +67,28 @@ exports.getAllArticles = async (req, res, next) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
-    // Récupérer les articles avec pagination
+    // Récupérer les vidéos avec pagination
     let query = Article.find(filter)
       .populate('category', 'name slug color');
     
     // Trier par date de publication (plus récent en premier)
     query = query.sort({ publishedAt: -1, createdAt: -1 });
     
-    const articles = await query
+    const videos = await query
       .skip(skip)
       .limit(limitNum)
       .select('-__v');
 
-    // Compter le total d'articles pour la pagination
+    // Compter le total de vidéos pour la pagination
     const total = await Article.countDocuments(filter);
 
     res.status(200).json({
       success: true,
-      count: articles.length,
+      count: videos.length,
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
-      data: articles
+      data: videos
     });
 
   } catch (error) {
@@ -106,42 +97,44 @@ exports.getAllArticles = async (req, res, next) => {
 };
 
 /**
- * @route   GET /api/articles/:slug
- * @desc    Récupérer un article par son slug
+ * @route   GET /api/videos/:slug
+ * @desc    Récupérer une vidéo par son slug
  * @access  Public
  */
-exports.getArticleBySlug = async (req, res, next) => {
+exports.getVideoBySlug = async (req, res, next) => {
   try {
-    const article = await Article.findOne({ slug: req.params.slug })
+    const video = await Article.findOne({ 
+      slug: req.params.slug,
+      videoUrl: { $exists: true, $ne: '' }  // Doit avoir un videoUrl
+    })
       .populate('category', 'name slug color description');
 
-    if (!article) {
+    if (!video) {
       return res.status(404).json({
         success: false,
-        message: 'Article non trouvé'
+        message: 'Vidéo non trouvée'
       });
     }
 
-    // Vérifier que l'article est publié
-    if (article.status !== 'published') {
+    // Vérifier que la vidéo est publiée
+    if (video.status !== 'published') {
       return res.status(404).json({
         success: false,
-        message: 'Article non trouvé'
+        message: 'Vidéo non trouvée'
       });
     }
 
     // Incrémenter le compteur de vues
-    article.views += 1;
-    await article.save();
+    video.views += 1;
+    await video.save();
 
     res.status(200).json({
       success: true,
-      data: article
+      data: video
     });
 
   } catch (error) {
     next(error);
   }
 };
-
 
