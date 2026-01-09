@@ -20,6 +20,12 @@ const newsletterRoutes = require('./routes/newsletterRoutes');
 // Initialiser l'application Express
 const app = express();
 
+// Configurer trust proxy pour Vercel (nécessaire pour rate limiting et IP correcte)
+// Vercel utilise des proxies, donc on doit faire confiance aux headers X-Forwarded-*
+if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', true);
+}
+
 // Connexion à la base de données MongoDB
 // Gérer les erreurs de connexion sans faire crasher le serveur
 connectDB().catch((error) => {
