@@ -7,6 +7,7 @@ const nodemailer = require('nodemailer');
 
 // Configuration du transporteur email
 let transporter = null;
+let smtpWarningShown = false; // Pour éviter les warnings répétés
 
 /**
  * Initialise le transporteur email
@@ -28,10 +29,16 @@ function initTransporter() {
     }
   };
 
-  // Si pas de configuration SMTP, utiliser un transporteur de test (pour développement)
+  // Si pas de configuration SMTP, afficher le warning une seule fois
   if (!smtpConfig.auth.user || !smtpConfig.auth.pass) {
-    console.warn('⚠️  Configuration SMTP manquante. Les emails ne seront pas envoyés.');
-    console.warn('   Configurez SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD dans .env');
+    if (!smtpWarningShown) {
+      // Afficher le warning seulement en développement ou une seule fois
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('⚠️  Configuration SMTP manquante. Les emails ne seront pas envoyés.');
+        console.warn('   Configurez SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD dans .env');
+      }
+      smtpWarningShown = true;
+    }
     return null;
   }
 
@@ -53,7 +60,10 @@ async function sendEmail(options) {
   const emailTransporter = initTransporter();
   
   if (!emailTransporter) {
-    console.warn('⚠️  Email non envoyé : transporteur non configuré');
+    // Ne pas logger en production si SMTP n'est pas configuré (c'est normal si non utilisé)
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('⚠️  Email non envoyé : transporteur non configuré');
+    }
     return { success: false, message: 'Service email non configuré' };
   }
 
