@@ -45,9 +45,8 @@ const userSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// Index pour améliorer les performances
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
+// Note: email et username ont déjà des index uniques via unique: true dans le schéma
+// Pas besoin de les redéfinir avec schema.index()
 
 // Middleware pre-save pour hasher le mot de passe avant sauvegarde
 userSchema.pre('save', async function(next) {
