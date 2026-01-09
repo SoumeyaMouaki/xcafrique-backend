@@ -36,8 +36,12 @@ app.use(helmet()); // Protège contre diverses vulnérabilités HTTP
 // Configuration CORS
 // Support des domaines de développement et production
 const getAllowedOrigins = () => {
-  // En développement, autoriser toutes les origines localhost
-  if (process.env.NODE_ENV === 'development') {
+  // Détecter si on est en développement local (pas sur Vercel)
+  // Vercel définit automatiquement VERCEL=1
+  const isLocalDevelopment = process.env.NODE_ENV === 'development' && !process.env.VERCEL;
+  
+  // En développement local uniquement
+  if (isLocalDevelopment) {
     return [
       'http://localhost:5173',  // Vite dev server
       'http://localhost:3000',  // React dev server
@@ -46,19 +50,22 @@ const getAllowedOrigins = () => {
     ];
   }
   
-  // En production, utiliser FRONTEND_URL ou ALLOWED_ORIGINS
+  // En production (Vercel ou NODE_ENV=production)
+  // Utiliser ALLOWED_ORIGINS ou FRONTEND_URL si défini
   const envOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL;
   
   if (envOrigins) {
-    return envOrigins.split(',').map(url => url.trim());
+    return envOrigins.split(',').map(url => url.trim()).filter(url => url.length > 0);
   }
   
-  // Valeurs par défaut pour la production
+  // Valeurs par défaut pour la production (si aucune variable d'environnement)
+  // Toujours autoriser le frontend Vercel et les previews
+  // Ces valeurs sont utilisées si ALLOWED_ORIGINS n'est pas configuré sur Vercel
   return [
     'https://xcafrique.org',
     'https://www.xcafrique.org',
     'https://xcafrique-frontend.vercel.app',
-    'https://*.vercel.app'  // Support des preview deployments Vercel
+    'https://.*\\.vercel\\.app'  // Regex pour tous les *.vercel.app (preview deployments)
   ];
 };
 
@@ -66,21 +73,26 @@ const corsOptions = {
   origin: function (origin, callback) {
     const allowedOrigins = getAllowedOrigins();
     
-    // Autoriser les requêtes sans origine (Postman, mobile apps, etc.) en développement
+    // Autoriser les requêtes sans origine (Postman, mobile apps, etc.)
     if (!origin) {
-      if (process.env.NODE_ENV === 'development') {
-        return callback(null, true);
-      }
-      // En production, vérifier si l'origine est dans la liste
-      return callback(null, true); // Autoriser pour les requêtes sans origine
+      return callback(null, true);
     }
     
-    // Vérifier si l'origine est autorisée (support des wildcards)
+    // Vérifier si l'origine est autorisée (support des wildcards et regex)
     const isAllowed = allowedOrigins.some(allowed => {
+      // Si c'est déjà une regex (contient \.)
+      if (allowed.includes('\\.')) {
+        const regex = new RegExp(`^${allowed}$`);
+        return regex.test(origin);
+      }
       // Support des wildcards comme *.vercel.app
       if (allowed.includes('*')) {
-        const pattern = allowed.replace(/\*/g, '.*');
-        return new RegExp(`^${pattern}$`).test(origin);
+        // Convertir https://*.vercel.app en regex
+        const pattern = allowed
+          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Échapper les caractères spéciaux
+          .replace(/\\\*/g, '.*'); // Remplacer \* par .*
+        const regex = new RegExp(`^${pattern}$`);
+        return regex.test(origin);
       }
       // Correspondance exacte
       return allowed === origin;
@@ -89,10 +101,10 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn(`⚠️  Origine non autorisée: ${origin}`);
-        console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
-      }
+      // Log en production pour déboguer
+      console.warn(`⚠️  Origine non autorisée: ${origin}`);
+      console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
+      console.warn(`   NODE_ENV: ${process.env.NODE_ENV}`);
       callback(new Error('Non autorisé par CORS'));
     }
   },
