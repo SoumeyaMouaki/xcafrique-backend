@@ -21,9 +21,10 @@ const newsletterRoutes = require('./routes/newsletterRoutes');
 const app = express();
 
 // Configurer trust proxy pour Vercel (nécessaire pour rate limiting et IP correcte)
-// Vercel utilise des proxies, donc on doit faire confiance aux headers X-Forwarded-*
+// Vercel utilise 1 proxy, donc on fait confiance au premier proxy uniquement
+// Cela est plus sécurisé que trust proxy: true
 if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
-  app.set('trust proxy', true);
+  app.set('trust proxy', 1); // Faire confiance au premier proxy uniquement (Vercel)
 }
 
 // Connexion à la base de données MongoDB
@@ -184,7 +185,10 @@ const limiter = rateLimit({
     message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.'
   },
   // Ne pas compter les connexions SSE dans le rate limiting
-  skip: (req) => req.path === '/api/newsletter/stream' || req.path === '/api/newsletter/stream/stats'
+  skip: (req) => req.path === '/api/newsletter/stream' || req.path === '/api/newsletter/stream/stats',
+  // Configuration pour Vercel (trust proxy: 1)
+  standardHeaders: true, // Retourne les headers rate limit dans `RateLimit-*`
+  legacyHeaders: false, // Désactive les headers `X-RateLimit-*`
 });
 app.use('/api/', limiter);
 
@@ -195,7 +199,10 @@ const authLimiter = rateLimit({
   message: {
     success: false,
     message: 'Trop de tentatives de connexion, veuillez réessayer plus tard.'
-  }
+  },
+  // Configuration pour Vercel (trust proxy: 1)
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api/auth/login', authLimiter);
 

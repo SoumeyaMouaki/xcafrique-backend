@@ -28,8 +28,9 @@ const connectDB = async () => {
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
       // Options recommandées pour Mongoose 6+
       // Les options useNewUrlParser et useUnifiedTopology sont maintenant par défaut
-      serverSelectionTimeoutMS: 5000, // Timeout de 5 secondes
+      serverSelectionTimeoutMS: 10000, // Timeout de 10 secondes (augmenté pour Vercel)
       socketTimeoutMS: 45000, // Timeout socket de 45 secondes
+      connectTimeoutMS: 10000, // Timeout de connexion de 10 secondes
     });
 
     cachedConnection = conn;
