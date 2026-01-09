@@ -21,7 +21,15 @@ const newsletterRoutes = require('./routes/newsletterRoutes');
 const app = express();
 
 // Connexion à la base de données MongoDB
-connectDB();
+// Gérer les erreurs de connexion sans faire crasher le serveur
+connectDB().catch((error) => {
+  console.error('Erreur lors de la connexion à MongoDB:', error.message);
+  // Sur Vercel, on continue quand même pour que l'erreur soit visible dans les logs
+  // mais on ne fait pas crash le serveur
+  if (process.env.VERCEL) {
+    console.error('⚠️  Le serveur continue mais les requêtes nécessitant MongoDB échoueront');
+  }
+});
 
 // Initialiser le service SSE
 sseService.init();
@@ -55,19 +63,33 @@ const getAllowedOrigins = () => {
   // Utiliser ALLOWED_ORIGINS ou FRONTEND_URL si défini
   const envOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL;
   
+  // Base des origines autorisées
+  let allowedOrigins = [];
+  
   if (envOrigins) {
-    return envOrigins.split(',').map(url => url.trim()).filter(url => url.length > 0);
+    allowedOrigins = envOrigins.split(',').map(url => url.trim()).filter(url => url.length > 0);
+  } else {
+    // Valeurs par défaut si aucune variable d'environnement
+    allowedOrigins = [
+      'https://xcafrique.org',
+      'https://www.xcafrique.org',
+      'https://xcafrique-frontend.vercel.app'
+    ];
   }
   
-  // Valeurs par défaut pour la production (si aucune variable d'environnement)
-  // Toujours autoriser le frontend Vercel et les previews
-  // Ces valeurs sont utilisées si ALLOWED_ORIGINS n'est pas configuré sur Vercel
-  return [
-    'https://xcafrique.org',
-    'https://www.xcafrique.org',
-    'https://xcafrique-frontend.vercel.app',
-    'https://.*\\.vercel\\.app'  // Regex pour tous les *.vercel.app (preview deployments)
-  ];
+  // Toujours ajouter le wildcard pour les preview deployments Vercel
+  // Format: https://*-*-*.vercel.app ou https://*-*.vercel.app
+  // Cela couvre tous les preview deployments comme: xcafrique-frontend-f49x4cwry-xcafriques-projects.vercel.app
+  // Vérifier si on a déjà une regex pour vercel.app
+  const hasVercelRegex = allowedOrigins.some(origin => 
+    origin.includes('vercel.app') && (origin.includes('.*') || origin.includes('\\.'))
+  );
+  
+  if (!hasVercelRegex) {
+    allowedOrigins.push('https://.*\\.vercel\\.app');  // Regex pour tous les *.vercel.app
+  }
+  
+  return allowedOrigins;
 };
 
 const corsOptions = {
@@ -81,31 +103,58 @@ const corsOptions = {
     
     // Vérifier si l'origine est autorisée (support des wildcards et regex)
     const isAllowed = allowedOrigins.some(allowed => {
-      // Si c'est déjà une regex (contient \.)
-      if (allowed.includes('\\.')) {
-        const regex = new RegExp(`^${allowed}$`);
-        return regex.test(origin);
+      // Correspondance exacte d'abord
+      if (allowed === origin) {
+        return true;
       }
+      
+      // Si c'est déjà une regex (contient \\.)
+      if (allowed.includes('\\.')) {
+        try {
+          const regex = new RegExp(`^${allowed}$`);
+          const matches = regex.test(origin);
+          if (matches) {
+            return true;
+          }
+        } catch (e) {
+          // Si la regex est invalide, continuer avec les autres méthodes
+          console.warn(`Regex invalide: ${allowed}`, e.message);
+        }
+      }
+      
       // Support des wildcards comme *.vercel.app
       if (allowed.includes('*')) {
-        // Convertir https://*.vercel.app en regex
-        const pattern = allowed
-          .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Échapper les caractères spéciaux
-          .replace(/\\\*/g, '.*'); // Remplacer \* par .*
-        const regex = new RegExp(`^${pattern}$`);
-        return regex.test(origin);
+        try {
+          // Convertir https://*.vercel.app en regex
+          const pattern = allowed
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&') // Échapper les caractères spéciaux
+            .replace(/\\\*/g, '.*'); // Remplacer \* par .*
+          const regex = new RegExp(`^${pattern}$`);
+          return regex.test(origin);
+        } catch (e) {
+          // Si la regex est invalide, ignorer
+          console.warn(`Wildcard invalide: ${allowed}`, e.message);
+        }
       }
-      // Correspondance exacte
-      return allowed === origin;
+      
+      return false;
     });
     
     if (isAllowed) {
       callback(null, true);
     } else {
-      // Log en production pour déboguer
+      // Log en production pour déboguer (toujours logger pour aider au debug)
       console.warn(`⚠️  Origine non autorisée: ${origin}`);
       console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
       console.warn(`   NODE_ENV: ${process.env.NODE_ENV}`);
+      console.warn(`   VERCEL: ${process.env.VERCEL}`);
+      
+      // Vérifier si c'est un preview deployment Vercel et suggérer la solution
+      if (origin && origin.includes('.vercel.app')) {
+        console.warn(`   💡 Cette origine semble être un preview deployment Vercel`);
+        console.warn(`   💡 Le wildcard https://.*\\.vercel\\.app devrait l'autoriser`);
+      }
+      
       callback(new Error('Non autorisé par CORS'));
     }
   },
@@ -192,41 +241,45 @@ app.use(errorHandler);
 // Configuration du port
 const PORT = process.env.PORT || 5000;
 
-// Démarrer le serveur
-const server = app.listen(PORT, () => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`🚀 Serveur démarré sur le port ${PORT}`);
-    console.log(`🌐 API disponible sur: http://localhost:${PORT}`);
-  }
-});
-
-// Gestion de l'arrêt propre du serveur
-const gracefulShutdown = (signal) => {
-  // Arrêter le service SSE
-  sseService.shutdown();
-  
-  // Fermer le serveur
-  server.close(() => {
-    process.exit(0);
+// Démarrer le serveur uniquement si on n'est pas sur Vercel
+// Sur Vercel, le serveur est géré par les Serverless Functions
+if (!process.env.VERCEL) {
+  const server = app.listen(PORT, () => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`🚀 Serveur démarré sur le port ${PORT}`);
+      console.log(`🌐 API disponible sur: http://localhost:${PORT}`);
+    }
   });
-  
-  // Forcer l'arrêt après 10 secondes
-  setTimeout(() => {
-    process.exit(1);
-  }, 10000);
-};
 
-// Écouter les signaux d'arrêt
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  // Gestion de l'arrêt propre du serveur
+  const gracefulShutdown = (signal) => {
+    // Arrêter le service SSE
+    sseService.shutdown();
+    
+    // Fermer le serveur
+    server.close(() => {
+      process.exit(0);
+    });
+    
+    // Forcer l'arrêt après 10 secondes
+    setTimeout(() => {
+      process.exit(1);
+    }, 10000);
+  };
 
-// Gestion des erreurs non capturées
-process.on('unhandledRejection', (err) => {
-  if (process.env.NODE_ENV !== 'production') {
-    console.error('Erreur non gérée:', err);
-  }
-  gracefulShutdown('unhandledRejection');
-});
+  // Écouter les signaux d'arrêt
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
+  // Gestion des erreurs non capturées
+  process.on('unhandledRejection', (err) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('Erreur non gérée:', err);
+    }
+    gracefulShutdown('unhandledRejection');
+  });
+}
+
+// Exporter l'app pour Vercel Serverless Functions
 module.exports = app;
 
