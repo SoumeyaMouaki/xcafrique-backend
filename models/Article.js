@@ -41,6 +41,11 @@ const articleSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  videoUrl: {
+    type: String,
+    default: '',
+    trim: true
+  },
   tags: [{
     type: String,
     trim: true

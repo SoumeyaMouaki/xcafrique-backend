@@ -34,35 +34,66 @@ setInterval(() => {
 app.use(helmet()); // Protège contre diverses vulnérabilités HTTP
 
 // Configuration CORS
-// En développement, autoriser toutes les origines localhost
-// En production, utiliser FRONTEND_URL
+// Support des domaines de développement et production
+const getAllowedOrigins = () => {
+  // En développement, autoriser toutes les origines localhost
+  if (process.env.NODE_ENV === 'development') {
+    return [
+      'http://localhost:5173',  // Vite dev server
+      'http://localhost:3000',  // React dev server
+      'http://localhost:5174',
+      'http://localhost:5175'
+    ];
+  }
+  
+  // En production, utiliser FRONTEND_URL ou ALLOWED_ORIGINS
+  const envOrigins = process.env.ALLOWED_ORIGINS || process.env.FRONTEND_URL;
+  
+  if (envOrigins) {
+    return envOrigins.split(',').map(url => url.trim());
+  }
+  
+  // Valeurs par défaut pour la production
+  return [
+    'https://xcafrique.org',
+    'https://www.xcafrique.org',
+    'https://xcafrique-frontend.vercel.app'
+  ];
+};
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // En développement, autoriser toutes les origines localhost
-    if (process.env.NODE_ENV === 'development') {
-      if (!origin || origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    const allowedOrigins = getAllowedOrigins();
+    
+    // Autoriser les requêtes sans origine (Postman, mobile apps, etc.) en développement
+    if (!origin) {
+      if (process.env.NODE_ENV === 'development') {
         return callback(null, true);
       }
+      // En production, vérifier si l'origine est dans la liste
+      return callback(null, true); // Autoriser pour les requêtes sans origine
     }
     
-    // En production, utiliser FRONTEND_URL
-    if (process.env.NODE_ENV === 'production') {
-      const allowedOrigins = process.env.FRONTEND_URL 
-        ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
-        : [];
-      
-      if (!origin || allowedOrigins.includes(origin)) {
-        return callback(null, true);
+    // Vérifier si l'origine est autorisée (support des wildcards)
+    const isAllowed = allowedOrigins.some(allowed => {
+      // Support des wildcards comme *.vercel.app
+      if (allowed.includes('*')) {
+        const pattern = allowed.replace(/\*/g, '.*');
+        return new RegExp(`^${pattern}$`).test(origin);
       }
-      
-      console.warn(`⚠️  Origine non autorisée: ${origin}`);
-      console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
-      
-      return callback(new Error('Non autorisé par CORS'));
-    }
+      // Correspondance exacte
+      return allowed === origin;
+    });
     
-    // Par défaut, autoriser
-    callback(null, true);
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`⚠️  Origine non autorisée: ${origin}`);
+        console.warn(`   Origines autorisées: ${allowedOrigins.join(', ')}`);
+      }
+      callback(new Error('Non autorisé par CORS'));
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -122,8 +153,8 @@ app.use('/api/articles', articleRoutes);
 app.use('/api/categories', categoryRoutes);
 // Routes optionnelles (à activer si nécessaire)
 // app.use('/api/auth', authRoutes);
-// app.use('/api/contact', contactRoutes);
-// app.use('/api/newsletter', newsletterRoutes);
+ app.use('/api/contact', contactRoutes);
+ app.use('/api/newsletter', newsletterRoutes);
 
 // Route 404 pour les endpoints non trouvés
 app.use('*', (req, res) => {
