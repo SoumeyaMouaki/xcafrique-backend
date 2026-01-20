@@ -1,5 +1,6 @@
 const Article = require('../models/Article');
 const Category = require('../models/Category');
+const { convertToEmbedUrl } = require('../utils/youtubeHelper');
 
 /**
  * Controller pour la gestion des vidéos
@@ -77,18 +78,31 @@ exports.getAllVideos = async (req, res, next) => {
     const videos = await query
       .skip(skip)
       .limit(limitNum)
-      .select('-__v');
+      .select('-__v')
+      .lean();
+
+    // Convertir les URLs YouTube en URLs embed pour chaque vidéo
+    const videosWithEmbedUrl = videos.map(video => {
+      if (video.videoUrl) {
+        const embedUrl = convertToEmbedUrl(video.videoUrl);
+        return {
+          ...video,
+          videoEmbedUrl: embedUrl || video.videoUrl
+        };
+      }
+      return video;
+    });
 
     // Compter le total de vidéos pour la pagination
     const total = await Article.countDocuments(filter);
 
     res.status(200).json({
       success: true,
-      count: videos.length,
+      count: videosWithEmbedUrl.length,
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
-      data: videos
+      data: videosWithEmbedUrl
     });
 
   } catch (error) {
@@ -124,13 +138,29 @@ exports.getVideoBySlug = async (req, res, next) => {
       });
     }
 
+    // Convertir l'URL YouTube en URL embed si présente
+    let videoWithEmbed = video.toObject ? video.toObject() : video;
+    if (videoWithEmbed.videoUrl) {
+      const embedUrl = convertToEmbedUrl(videoWithEmbed.videoUrl);
+      videoWithEmbed = {
+        ...videoWithEmbed,
+        videoEmbedUrl: embedUrl || videoWithEmbed.videoUrl
+      };
+    }
+
     // Incrémenter le compteur de vues
     video.views += 1;
     await video.save();
 
+    // Ajouter la vue incrémentée à la réponse
+    const videoResponse = {
+      ...videoWithEmbed,
+      views: video.views
+    };
+
     res.status(200).json({
       success: true,
-      data: video
+      data: videoResponse
     });
 
   } catch (error) {

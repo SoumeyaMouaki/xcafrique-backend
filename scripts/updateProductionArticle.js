@@ -52,21 +52,64 @@ async function updateProductionArticle(articleFileName = 'article1.json') {
     console.log('✅ Connecté à MongoDB\n');
 
     // Trouver la catégorie
-    const categorySlug = articleData.category.toLowerCase().trim();
+    // Générer le slug de la même manière que le modèle Category
+    const categorySlug = articleData.category
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '')
+      .trim();
+    
+    // Chercher d'abord par slug
     let category = await Category.findOne({ 
       slug: categorySlug,
       isActive: true
     });
     
+    // Si pas trouvé par slug, chercher par nom (insensible à la casse)
     if (!category) {
-      console.log(`⚠️  Catégorie "${categorySlug}" non trouvée, création...`);
-      category = await Category.create({
-        name: articleData.category,
-        slug: categorySlug,
-        description: `Catégorie: ${articleData.category}`,
+      const categoryNameRegex = new RegExp(`^${articleData.category.trim()}$`, 'i');
+      category = await Category.findOne({ 
+        name: categoryNameRegex,
         isActive: true
       });
-      console.log(`✅ Catégorie créée: ${category.name} (${category.slug})\n`);
+    }
+    
+    if (!category) {
+      console.log(`⚠️  Catégorie "${categorySlug}" non trouvée, création...`);
+      try {
+        category = await Category.create({
+          name: articleData.category.trim(),
+          slug: categorySlug,
+          description: `Catégorie: ${articleData.category}`,
+          isActive: true
+        });
+        console.log(`✅ Catégorie créée: ${category.name} (${category.slug})\n`);
+      } catch (error) {
+        // Si erreur de clé dupliquée, chercher la catégorie existante
+        if (error.code === 11000) {
+          console.log(`⚠️  Catégorie avec ce nom existe déjà, recherche...`);
+          const categoryNameRegex = new RegExp(`^${articleData.category.trim()}$`, 'i');
+          category = await Category.findOne({ 
+            name: categoryNameRegex,
+            isActive: true
+          });
+          if (category) {
+            console.log(`✅ Catégorie trouvée: ${category.name} (${category.slug})\n`);
+          } else {
+            // Si toujours pas trouvé, chercher par slug
+            category = await Category.findOne({ slug: categorySlug, isActive: true });
+            if (category) {
+              console.log(`✅ Catégorie trouvée par slug: ${category.name} (${category.slug})\n`);
+            } else {
+              throw error; // Re-lancer l'erreur si vraiment pas trouvé
+            }
+          }
+        } else {
+          throw error; // Re-lancer les autres erreurs
+        }
+      }
     } else {
       console.log(`✅ Catégorie trouvée: ${category.name} (${category.slug})\n`);
     }

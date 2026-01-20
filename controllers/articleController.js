@@ -1,5 +1,6 @@
 const Article = require('../models/Article');
 const Category = require('../models/Category');
+const { convertToEmbedUrl } = require('../utils/youtubeHelper');
 
 /**
  * Controller pour la gestion des articles
@@ -138,16 +139,28 @@ exports.getAllArticles = async (req, res, next) => {
       .select('-__v')
       .lean(); // Utiliser lean() pour de meilleures performances
 
+    // Convertir les URLs YouTube en URLs embed pour chaque article
+    const articlesWithEmbedUrl = articles.map(article => {
+      if (article.videoUrl) {
+        const embedUrl = convertToEmbedUrl(article.videoUrl);
+        return {
+          ...article,
+          videoEmbedUrl: embedUrl || article.videoUrl // Fallback sur l'URL originale si conversion échoue
+        };
+      }
+      return article;
+    });
+
     // Compter le total d'articles pour la pagination
     const total = await Article.countDocuments(filter).maxTimeMS(5000); // Timeout de 5 secondes
 
     res.status(200).json({
       success: true,
-      count: articles.length,
+      count: articlesWithEmbedUrl.length,
       total,
       page: pageNum,
       pages: Math.ceil(total / limitNum),
-      data: articles
+      data: articlesWithEmbedUrl
     });
 
   } catch (error) {
@@ -201,9 +214,19 @@ exports.getArticleBySlug = async (req, res, next) => {
       }
     });
 
+    // Convertir l'URL YouTube en URL embed si présente
+    let articleWithEmbed = article;
+    if (article.videoUrl) {
+      const embedUrl = convertToEmbedUrl(article.videoUrl);
+      articleWithEmbed = {
+        ...article,
+        videoEmbedUrl: embedUrl || article.videoUrl // Fallback sur l'URL originale si conversion échoue
+      };
+    }
+
     // Incrémenter les vues dans la réponse pour l'affichage immédiat
     const articleWithViews = {
-      ...article,
+      ...articleWithEmbed,
       views: (article.views || 0) + 1
     };
 
