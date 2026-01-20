@@ -41,6 +41,14 @@ export interface CategoryInfo {
   description?: string;
 }
 
+export interface ArticleSource {
+  title?: string;
+  url?: string;
+  author?: string;
+  date?: string;
+  type?: 'article' | 'press-release' | 'official' | 'report' | 'other';
+}
+
 export interface Article {
   _id: string;
   title: string;
@@ -50,6 +58,7 @@ export interface Article {
   category: CategoryInfo;
   author: string;
   featuredImage: string;
+  sources?: ArticleSource[];
   tags: string[];
   publishedAt: string; // ISO date string
   views: number;

@@ -5,9 +5,18 @@
   "category": "Exemple",
   "author": "Admin XC Afrique",
   "featuredImage": "assets/images/exemple-image.jpg",
+  "imageCredit": "Photo par [Nom du photographe]",
+  "sources": [
+    {
+      "title": "Exemple de source",
+      "url": "https://exemple.com/source",
+      "author": "Auteur de la source",
+      "date": "2025-01-15",
+      "type": "article"
+    }
+  ],
   "tags": ["exemple", "documentation", "guide"],
   "status": "draft",
   "featured": false,
   "publishedAt": null
 }
-

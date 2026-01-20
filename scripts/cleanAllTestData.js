@@ -4,11 +4,10 @@ const connectDB = require('../config/database');
 const Article = require('../models/Article');
 const Category = require('../models/Category');
 const Contact = require('../models/Contact');
-const Newsletter = require('../models/Newsletter');
 
 /**
  * Script pour supprimer toutes les données de test
- * Supprime: Articles, Contacts, Newsletter
+ * Supprime: Articles, Contacts
  * Conserve: Catégories (nécessaires pour les articles)
  * 
  * Usage: node scripts/cleanAllTestData.js
@@ -24,13 +23,11 @@ async function cleanAllTestData() {
     // Compter avant suppression
     const articleCount = await Article.countDocuments();
     const contactCount = await Contact.countDocuments();
-    const newsletterCount = await Newsletter.countDocuments();
     const categoryCount = await Category.countDocuments();
 
     console.log('📊 Données actuelles:');
     console.log(`   Articles: ${articleCount}`);
     console.log(`   Contacts: ${contactCount}`);
-    console.log(`   Newsletter: ${newsletterCount}`);
     console.log(`   Catégories: ${categoryCount} (conservées)\n`);
 
     // Supprimer les articles
@@ -47,14 +44,6 @@ async function cleanAllTestData() {
       console.log(`✅ ${contactResult.deletedCount} contact(s) supprimé(s)`);
     } else {
       console.log('✅ Aucun contact à supprimer');
-    }
-
-    // Supprimer les abonnés newsletter
-    if (newsletterCount > 0) {
-      const newsletterResult = await Newsletter.deleteMany({});
-      console.log(`✅ ${newsletterResult.deletedCount} abonné(s) newsletter supprimé(s)`);
-    } else {
-      console.log('✅ Aucun abonné newsletter à supprimer');
     }
 
     console.log('\n✅ Base de données nettoyée !');

@@ -35,18 +35,59 @@ exports.getAllArticles = async (req, res, next) => {
 
     // Filtrer par catégorie si fourni (slug ou ID)
     if (category) {
-      const categoryDoc = await Category.findOne({
-        $or: [
-          { slug: category.toLowerCase() },
-          { _id: category }
-        ],
-        isActive: true
-      });
-      
-      if (categoryDoc) {
-        filter.category = categoryDoc._id;
-      } else {
-        // Catégorie non trouvée, retourner un tableau vide
+      try {
+        // Normaliser le slug (supprimer les espaces, convertir en minuscules)
+        const normalizedCategory = category.trim().toLowerCase();
+        
+        // Chercher la catégorie avec plusieurs stratégies
+        let categoryDoc = null;
+        
+        // Stratégie 1 : Par slug normalisé
+        if (normalizedCategory) {
+          categoryDoc = await Category.findOne({
+            slug: normalizedCategory,
+            isActive: true
+          });
+        }
+        
+        // Stratégie 2 : Par slug original (si normalisé n'a pas fonctionné)
+        if (!categoryDoc && category !== normalizedCategory) {
+          categoryDoc = await Category.findOne({
+            slug: category.trim(),
+            isActive: true
+          });
+        }
+        
+        // Stratégie 3 : Par ID MongoDB (si c'est un ObjectId valide)
+        if (!categoryDoc && /^[0-9a-fA-F]{24}$/.test(category.trim())) {
+          categoryDoc = await Category.findOne({
+            _id: category.trim(),
+            isActive: true
+          });
+        }
+        
+        if (categoryDoc) {
+          // Catégorie trouvée : filtrer par cette catégorie
+          filter.category = categoryDoc._id;
+        } else {
+          // Catégorie non trouvée : retourner un tableau vide (200 OK)
+          // Ne JAMAIS retourner 404 pour une liste vide
+          return res.status(200).json({
+            success: true,
+            count: 0,
+            total: 0,
+            page: parseInt(page),
+            pages: 0,
+            data: []
+          });
+        }
+      } catch (categoryError) {
+        // En cas d'erreur lors de la recherche de catégorie,
+        // retourner un tableau vide plutôt qu'une erreur
+        // Cela évite que l'errorHandler transforme l'erreur en 404
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('Erreur lors de la recherche de catégorie:', categoryError.message);
+        }
         return res.status(200).json({
           success: true,
           count: 0,
@@ -76,9 +117,17 @@ exports.getAllArticles = async (req, res, next) => {
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
+    // Vérifier que MongoDB est connecté
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      // Essayer de se reconnecter
+      const connectDB = require('../config/database');
+      await connectDB();
+    }
+
     // Récupérer les articles avec pagination
     let query = Article.find(filter)
-      .populate('category', 'name slug color');
+      .populate('category', 'name slug color description');
     
     // Trier par date de publication (plus récent en premier)
     query = query.sort({ publishedAt: -1, createdAt: -1 });
@@ -86,10 +135,11 @@ exports.getAllArticles = async (req, res, next) => {
     const articles = await query
       .skip(skip)
       .limit(limitNum)
-      .select('-__v');
+      .select('-__v')
+      .lean(); // Utiliser lean() pour de meilleures performances
 
     // Compter le total d'articles pour la pagination
-    const total = await Article.countDocuments(filter);
+    const total = await Article.countDocuments(filter).maxTimeMS(5000); // Timeout de 5 secondes
 
     res.status(200).json({
       success: true,
@@ -112,8 +162,17 @@ exports.getAllArticles = async (req, res, next) => {
  */
 exports.getArticleBySlug = async (req, res, next) => {
   try {
+    // Vérifier que MongoDB est connecté
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      // Essayer de se reconnecter
+      const connectDB = require('../config/database');
+      await connectDB();
+    }
+
     const article = await Article.findOne({ slug: req.params.slug })
-      .populate('category', 'name slug color description');
+      .populate('category', 'name slug color description')
+      .lean(); // Utiliser lean() pour de meilleures performances
 
     if (!article) {
       return res.status(404).json({
@@ -130,13 +189,27 @@ exports.getArticleBySlug = async (req, res, next) => {
       });
     }
 
-    // Incrémenter le compteur de vues
-    article.views += 1;
-    await article.save();
+    // Incrémenter le compteur de vues (sans attendre pour améliorer les performances)
+    // Utiliser updateOne pour éviter de bloquer la réponse
+    Article.updateOne(
+      { slug: req.params.slug },
+      { $inc: { views: 1 } }
+    ).catch(err => {
+      // Logger l'erreur mais ne pas bloquer la réponse
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Erreur lors de l\'incrément des vues:', err.message);
+      }
+    });
+
+    // Incrémenter les vues dans la réponse pour l'affichage immédiat
+    const articleWithViews = {
+      ...article,
+      views: (article.views || 0) + 1
+    };
 
     res.status(200).json({
       success: true,
-      data: article
+      data: articleWithViews
     });
 
   } catch (error) {

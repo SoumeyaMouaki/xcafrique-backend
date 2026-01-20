@@ -49,12 +49,28 @@ exports.getAllCategories = async (req, res, next) => {
 
 /**
  * @route   GET /api/categories/:id
- * @desc    Récupérer une catégorie par son ID
+ * @desc    Récupérer une catégorie par son ID ou slug
  * @access  Public
  */
 exports.getCategoryById = async (req, res, next) => {
   try {
-    const category = await Category.findById(req.params.id);
+    const { id } = req.params;
+    
+    // Essayer de trouver par ID d'abord, puis par slug
+    let category = null;
+    
+    // Si c'est un ObjectId valide (24 caractères hexadécimaux)
+    if (/^[0-9a-fA-F]{24}$/.test(id)) {
+      category = await Category.findById(id);
+    }
+    
+    // Si pas trouvé par ID, essayer par slug
+    if (!category) {
+      category = await Category.findOne({
+        slug: id.toLowerCase().trim(),
+        isActive: true
+      });
+    }
 
     if (!category) {
       return res.status(404).json({

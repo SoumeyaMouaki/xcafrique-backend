@@ -5,6 +5,16 @@
   "category": "Nom de la catégorie",
   "author": "Admin XC Afrique",
   "featuredImage": "assets/images/nom-image.jpg",
+  "imageCredit": "Photo par [Nom du photographe]",
+  "sources": [
+    {
+      "title": "Titre de la source",
+      "url": "https://exemple.com/article",
+      "author": "Nom de l'auteur",
+      "date": "2025-01-15",
+      "type": "article"
+    }
+  ],
   "tags": ["tag1", "tag2", "tag3"],
   "status": "draft",
   "featured": false,

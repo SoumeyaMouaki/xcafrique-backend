@@ -14,6 +14,17 @@ const connectDB = async () => {
       return cachedConnection;
     }
 
+    // Si la connexion est en cours de connexion, attendre
+    if (mongoose.connection.readyState === 2) {
+      await new Promise((resolve) => {
+        mongoose.connection.once('connected', resolve);
+        mongoose.connection.once('error', resolve);
+      });
+      if (mongoose.connection.readyState === 1) {
+        return cachedConnection;
+      }
+    }
+
     // Vérifier que MONGODB_URI est défini
     if (!process.env.MONGODB_URI) {
       const errorMsg = '❌ Erreur: MONGODB_URI n\'est pas défini dans les variables d\'environnement\n' +
@@ -31,6 +42,10 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 10000, // Timeout de 10 secondes (augmenté pour Vercel)
       socketTimeoutMS: 45000, // Timeout socket de 45 secondes
       connectTimeoutMS: 10000, // Timeout de connexion de 10 secondes
+      maxPoolSize: 10, // Nombre max de connexions dans le pool
+      minPoolSize: 2, // Nombre min de connexions dans le pool
+      maxIdleTimeMS: 30000, // Fermer les connexions inactives après 30 secondes
+      heartbeatFrequencyMS: 10000, // Vérifier la connexion toutes les 10 secondes
     });
 
     cachedConnection = conn;
@@ -41,14 +56,23 @@ const connectDB = async () => {
     
     // Gestion des événements de connexion
     mongoose.connection.on('error', (err) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('Erreur de connexion MongoDB:', err);
-      }
+      console.error('Erreur de connexion MongoDB:', err.message);
+      // Réinitialiser le cache en cas d'erreur
+      cachedConnection = null;
     });
 
     mongoose.connection.on('disconnected', () => {
       if (process.env.NODE_ENV !== 'production') {
         console.log('MongoDB déconnecté');
+      }
+      // Réinitialiser le cache en cas de déconnexion
+      cachedConnection = null;
+    });
+
+    // Reconnexion automatique
+    mongoose.connection.on('reconnected', () => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('MongoDB reconnecté');
       }
     });
 

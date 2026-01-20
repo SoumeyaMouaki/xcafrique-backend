@@ -5,6 +5,7 @@
   "category": "Nom de la catégorie",
   "author": "Admin XC Afrique",
   "featuredImage": "assets/images/nom-image-video.jpg",
+  "imageCredit": "Photo par [Nom du photographe]",
   "tags": ["vidéo", "tutoriel", "multimédia"],
   "status": "draft",
   "featured": false,

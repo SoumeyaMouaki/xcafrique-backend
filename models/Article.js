@@ -41,11 +41,40 @@ const articleSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  imageCredit: {
+    type: String,
+    default: '',
+    trim: true,
+    maxlength: [200, 'Le crédit photo ne peut pas dépasser 200 caractères']
+  },
   videoUrl: {
     type: String,
     default: '',
     trim: true
   },
+  sources: [{
+    title: {
+      type: String,
+      trim: true
+    },
+    url: {
+      type: String,
+      trim: true
+    },
+    author: {
+      type: String,
+      trim: true
+    },
+    date: {
+      type: String,
+      trim: true
+    },
+    type: {
+      type: String,
+      enum: ['article', 'press-release', 'official', 'report', 'other'],
+      default: 'other'
+    }
+  }],
   tags: [{
     type: String,
     trim: true

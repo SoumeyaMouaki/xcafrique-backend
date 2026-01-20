@@ -202,6 +202,10 @@ class ContentManager {
         articlePayload.publishedAt = new Date(articleData.publishedAt);
       }
 
+      if (articleData.sources && Array.isArray(articleData.sources)) {
+        articlePayload.sources = articleData.sources;
+      }
+
       if (existingArticle) {
         // Mettre à jour l'article existant
         console.log(`🔄 Mise à jour de l'article: ${articleData.title}`);
