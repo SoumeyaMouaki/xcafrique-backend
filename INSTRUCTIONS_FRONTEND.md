@@ -351,7 +351,8 @@ interface Article {
   author: string;
   featuredImage: string; // URL
   imageCredit?: string;
-  videoUrl?: string;
+  videoUrl?: string; // URL originale YouTube (watch, youtu.be) - NE PAS utiliser dans iframe
+  videoEmbedUrl?: string; // URL embed pour iframe (ajouté automatiquement par le backend) - ✅ UTILISER CELUI-CI
   sources?: ArticleSource[]; // Tableau optionnel de sources
   tags: string[];
   status: 'published' | 'draft';
@@ -515,6 +516,49 @@ function ArticlePage({ article }) {
 - `other` : Autre type de source
 
 **Note :** Le champ `sources` est optionnel. Vérifiez toujours si `article.sources` existe et n'est pas vide avant de l'afficher.
+
+---
+
+## 🎥 Intégration des Vidéos YouTube
+
+### ⚠️ IMPORTANT : Utiliser `videoEmbedUrl` pour les iframes
+
+Le backend convertit automatiquement les URLs YouTube en URLs embed et ajoute un champ `videoEmbedUrl` dans la réponse API.
+
+**❌ NE PAS utiliser `videoUrl` dans une iframe** - cela causera une erreur X-Frame-Options.
+
+**✅ Utiliser `videoEmbedUrl` pour les iframes** :
+
+```javascript
+// ✅ CORRECT
+{article.videoEmbedUrl && (
+  <div className="video-container" style={{
+    position: 'relative',
+    paddingBottom: '56.25%', // 16:9 aspect ratio
+    height: 0,
+    overflow: 'hidden',
+    maxWidth: '100%'
+  }}>
+    <iframe
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%'
+      }}
+      src={article.videoEmbedUrl}
+      frameBorder="0"
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+    />
+  </div>
+)}
+```
+
+**Pour plus de détails, consultez :**
+- `CORRECTION_FRONTEND_YOUTUBE.md` - Guide de correction rapide
+- `GUIDE_INTEGRATION_YOUTUBE.md` - Guide complet d'intégration
 
 ---
 
