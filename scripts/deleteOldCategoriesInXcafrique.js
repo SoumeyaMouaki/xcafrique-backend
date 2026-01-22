@@ -2,10 +2,10 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 
 /**
- * Script pour supprimer TOUTES les anciennes catégories dans la base "xcafrique" (minuscules)
+ * Script pour supprimer TOUTES les anciennes catégories dans la base "XCAfrique" (avec majuscules)
  * 
  * Usage:
- *   node scripts/deleteOldCategoriesInXcafrique.js
+ *   node scripts/deleteOldCategoriesInXCAfrique.js
  */
 
 // Slugs des nouvelles catégories à CONSERVER
@@ -17,9 +17,48 @@ const NEW_CATEGORY_SLUGS = [
   'regards-perspectives'
 ];
 
+// Nouvelles catégories à créer si elles n'existent pas
+const newCategories = [
+  {
+    name: 'Décryptage & Analyse',
+    slug: 'decryptage-analyse',
+    description: 'Analyses stratégiques, lectures approfondies et mises en perspective de l\'actualité aéronautique africaine. Cette rubrique vise à expliquer les enjeux, impacts et dynamiques de fond du secteur pour les professionnels et décideurs.',
+    color: '#7C3AED',
+    isActive: true
+  },
+  {
+    name: 'Compagnies & Acteurs',
+    slug: 'compagnies-acteurs',
+    description: 'Suivi et analyse des compagnies aériennes africaines et internationales opérant sur le continent, ainsi que des acteurs clés du secteur (dirigeants, partenaires, industriels). Approche factuelle et stratégique, sans contenu promotionnel.',
+    color: '#059669',
+    isActive: true
+  },
+  {
+    name: 'Infrastructures & Marché',
+    slug: 'infrastructures-marche',
+    description: 'Projets aéroportuaires, hubs régionaux, investissements, données de marché et dynamiques économiques liées au transport aérien africain.',
+    color: '#2563EB',
+    isActive: true
+  },
+  {
+    name: 'Réglementation & Sécurité',
+    slug: 'reglementation-securite',
+    description: 'Évolutions réglementaires, normes internationales, décisions institutionnelles, sécurité aérienne et conformité dans le contexte africain.',
+    color: '#0891B2',
+    isActive: true
+  },
+  {
+    name: 'Regards & Perspectives',
+    slug: 'regards-perspectives',
+    description: 'Tribunes, analyses de fond et réflexions prospectives sur l\'avenir de l\'aviation africaine et de son écosystème.',
+    color: '#9333EA',
+    isActive: true
+  }
+];
+
 async function deleteOldCategories() {
   try {
-    console.log('🗑️  SUPPRESSION DES ANCIENNES CATÉGORIES DANS "xcafrique"\n');
+    console.log('🗑️  SUPPRESSION DES ANCIENNES CATÉGORIES DANS "XCAfrique"\n');
     console.log('='.repeat(70));
 
     // Récupérer l'URI de base
@@ -30,27 +69,22 @@ async function deleteOldCategories() {
       process.exit(1);
     }
 
-    // Forcer le nom de la base de données à "xcafrique" (minuscules)
-    let mongoUri = baseUri;
+    // Forcer le nom de la base de données à "XCAfrique" (avec majuscules)
+    // Remplacer n'importe quel nom de base (xcafrique, XCAfrique, etc.) par "XCAfrique"
+    let mongoUri = baseUri.replace(/\/[^\/\?]+(\?|$)/, '/XCAfrique$1');
     
-    // Extraire la partie avant le nom de la base
-    const uriMatch = baseUri.match(/^(mongodb\+srv:\/\/[^\/]+)\/([^?]+)(\?.*)?$/);
-    if (uriMatch) {
-      // Remplacer le nom de la base par "xcafrique"
-      mongoUri = `${uriMatch[1]}/xcafrique${uriMatch[3] || ''}`;
-    } else {
-      // Si le format est différent, ajouter /xcafrique à la fin
-      if (!baseUri.includes('/xcafrique') && !baseUri.includes('/XCAfrique')) {
-        mongoUri = baseUri.replace(/\/([^\/\?]+)(\?|$)/, '/xcafrique$2');
+    // Si l'URI se termine sans nom de base, ajouter /XCAfrique
+    if (!mongoUri.match(/\/[^\/\?]+(\?|$)/)) {
+      if (mongoUri.endsWith('/')) {
+        mongoUri = mongoUri + 'XCAfrique';
       } else {
-        // Remplacer XCAfrique par xcafrique
-        mongoUri = baseUri.replace(/\/XCAfrique(\?|$)/i, '/xcafrique$1');
+        mongoUri = mongoUri + '/XCAfrique';
       }
     }
 
     const uriPreview = mongoUri.replace(/\/\/.*:.*@/, '//***:***@').substring(0, 60) + '...';
     console.log(`🔌 MongoDB URI: ${uriPreview}`);
-    console.log(`📊 Base de données: xcafrique (forcée)\n`);
+    console.log(`📊 Base de données: XCAfrique (forcée)\n`);
 
     await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 10000,
@@ -60,21 +94,48 @@ async function deleteOldCategories() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     console.log('✅ Connecté à MongoDB\n');
 
-    const db = mongoose.connection.db;
+    // Forcer l'utilisation de la base "XCAfrique" avec majuscules
+    const client = mongoose.connection.getClient();
+    const db = client.db('XCAfrique'); // Forcer le nom avec majuscules
     const actualDbName = db.databaseName;
     console.log(`📊 Base de données actuelle: ${actualDbName}\n`);
-
-    if (actualDbName.toLowerCase() !== 'xcafrique') {
-      console.log(`⚠️  ATTENTION: La base de données actuelle est "${actualDbName}" et non "xcafrique"`);
-      console.log(`   Vérifiez votre URI MongoDB\n`);
-    }
 
     const categoriesCollection = db.collection('categories');
     const articlesCollection = db.collection('articles');
 
+    // Créer les nouvelles catégories si elles n'existent pas
+    console.log('📋 Création/Vérification des nouvelles catégories:\n');
+    for (const catData of newCategories) {
+      const existing = await categoriesCollection.findOne({ slug: catData.slug });
+      
+      if (!existing) {
+        await categoriesCollection.insertOne({
+          ...catData,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+        console.log(`✅ ${catData.name}: Créée`);
+      } else {
+        // Mettre à jour
+        await categoriesCollection.updateOne(
+          { slug: catData.slug },
+          { 
+            $set: {
+              name: catData.name,
+              description: catData.description,
+              color: catData.color,
+              isActive: true,
+              updatedAt: new Date()
+            }
+          }
+        );
+        console.log(`🔄 ${catData.name}: Mise à jour`);
+      }
+    }
+
     // Récupérer TOUTES les catégories
     const allCategories = await categoriesCollection.find({}).toArray();
-    console.log(`📊 ${allCategories.length} catégorie(s) trouvée(s) dans la base "${actualDbName}"\n`);
+    console.log(`\n📊 ${allCategories.length} catégorie(s) trouvée(s) au total\n`);
 
     // Afficher toutes les catégories
     console.log('📋 Liste complète des catégories:\n');
@@ -136,7 +197,7 @@ async function deleteOldCategories() {
     await mongoose.connection.close();
     console.log('\n✅ Terminé !\n');
     console.log('💡 Dans MongoDB Compass:');
-    console.log('   1. Connectez-vous à la base "xcafrique" (minuscules)');
+    console.log('   1. Connectez-vous à la base "XCAfrique" (avec majuscules)');
     console.log('   2. Actualisez la collection "categories" (F5)');
     console.log('   3. Vous devriez voir uniquement les 5 nouvelles catégories');
     process.exit(0);
@@ -154,4 +215,3 @@ async function deleteOldCategories() {
 }
 
 deleteOldCategories();
-
