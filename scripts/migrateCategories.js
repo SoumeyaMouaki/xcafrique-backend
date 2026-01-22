@@ -292,13 +292,22 @@ async function migrateCategories(dryRun = false) {
     }
 
     // ============================================
-    // ÉTAPE 3 : Désactiver les anciennes catégories
+    // ÉTAPE 3 : Supprimer les anciennes catégories
     // ============================================
-    console.log('\n🗑️  ÉTAPE 3 : Désactivation des anciennes catégories\n');
-    let deactivatedCount = 0;
+    console.log('\n🗑️  ÉTAPE 3 : Suppression des anciennes catégories\n');
+    let deletedCount = 0;
     const processedCategories = new Set();
 
-    for (const oldCatName of categoriesToRemove) {
+    // Liste complète des anciennes catégories à supprimer
+    const allOldCategories = [
+      ...categoriesToRemove,
+      'Aéroports & Infrastructures',
+      'aeroports-infrastructures',
+      'Compagnies aériennes',
+      'compagnies-aeriennes'
+    ];
+
+    for (const oldCatName of allOldCategories) {
       // Chercher par nom ou slug
       let oldCategory = await Category.findOne({ name: oldCatName });
       if (!oldCategory) {
@@ -313,42 +322,14 @@ async function migrateCategories(dryRun = false) {
         
         if (articlesUsingCategory === 0) {
           if (dryRun) {
-            console.log(`🗑️  ${oldCategory.name}: SERAIT désactivée (${articlesUsingCategory} article)`);
+            console.log(`🗑️  ${oldCategory.name} (${oldCategory.slug}): SERAIT supprimée (${articlesUsingCategory} article)`);
           } else {
-            oldCategory.isActive = false;
-            await oldCategory.save();
-            console.log(`✅ ${oldCategory.name}: Désactivée (${articlesUsingCategory} article)`);
+            await Category.deleteOne({ _id: oldCategory._id });
+            console.log(`✅ ${oldCategory.name} (${oldCategory.slug}): Supprimée`);
           }
-          deactivatedCount++;
+          deletedCount++;
         } else {
-          console.log(`⚠️  ${oldCategory.name}: ${articlesUsingCategory} article(s) utilisent encore cette catégorie`);
-        }
-      }
-    }
-    
-    // Désactiver aussi les catégories qui ont été remplacées
-    const categoriesToReplace = ['Aéroports & Infrastructures', 'aeroports-infrastructures', 'Compagnies aériennes', 'compagnies-aeriennes'];
-    for (const oldCatName of categoriesToReplace) {
-      let oldCategory = await Category.findOne({ name: oldCatName });
-      if (!oldCategory) {
-        oldCategory = await Category.findOne({ slug: oldCatName });
-      }
-      
-      if (oldCategory && !processedCategories.has(oldCategory._id.toString())) {
-        processedCategories.add(oldCategory._id.toString());
-        const articlesUsingCategory = await Article.countDocuments({ category: oldCategory._id });
-        
-        if (articlesUsingCategory === 0) {
-          if (dryRun) {
-            console.log(`🗑️  ${oldCategory.name}: SERAIT désactivée (remplacée par nouvelle catégorie)`);
-          } else {
-            oldCategory.isActive = false;
-            await oldCategory.save();
-            console.log(`✅ ${oldCategory.name}: Désactivée (remplacée)`);
-          }
-          deactivatedCount++;
-        } else {
-          console.log(`⚠️  ${oldCategory.name}: ${articlesUsingCategory} article(s) utilisent encore cette catégorie`);
+          console.log(`⚠️  ${oldCategory.name}: ${articlesUsingCategory} article(s) utilisent encore cette catégorie - NON supprimée`);
         }
       }
     }
@@ -362,7 +343,7 @@ async function migrateCategories(dryRun = false) {
     console.log(`✅ Catégories créées/vérifiées: ${newCategories.length}`);
     console.log(`✅ Articles migrés: ${migratedCount}`);
     console.log(`❌ Articles non trouvés: ${notFoundCount}`);
-    console.log(`🗑️  Catégories désactivées: ${deactivatedCount}`);
+    console.log(`🗑️  Catégories supprimées: ${deletedCount}`);
 
     if (migrationReport.length > 0) {
       console.log('\n📋 Détail des migrations:\n');
