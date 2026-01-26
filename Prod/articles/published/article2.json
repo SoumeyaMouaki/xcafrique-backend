@@ -45,5 +45,6 @@
     ],
     "status": "published",
     "views": 0,
-    "publishedAt": null
+    "publishedAt": null,
+    "usedForSocial": false
   }

@@ -91,6 +91,10 @@ const articleSchema = new mongoose.Schema({
   publishedAt: {
     type: Date,
     default: null
+  },
+  usedForSocial: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true // Ajoute automatiquement createdAt et updatedAt
