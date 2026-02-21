@@ -41,26 +41,28 @@ function createTransporter(forceNew = false) {
   // Sur Vercel, les connexions peuvent être plus lentes, donc on augmente les timeouts
   let connectionTimeout, greetingTimeout, socketTimeout;
   
+  // Timeouts RÉDUITS pour éviter les blocages longs
+  // Si la connexion ne fonctionne pas rapidement, mieux vaut échouer vite et réessayer
   if (isHostinger && isVercel) {
-    // Hostinger sur Vercel : timeouts très longs (augmentés pour DATA command)
-    connectionTimeout = 90000; // 90s (augmenté)
-    greetingTimeout = 90000; // 90s (augmenté)
-    socketTimeout = 180000; // 180s (3 minutes - augmenté pour gérer les timeouts DATA)
+    // Hostinger sur Vercel : timeouts modérés (échouer vite si problème)
+    connectionTimeout = 30000; // 30s (réduit de 90s)
+    greetingTimeout = 30000; // 30s (réduit de 90s)
+    socketTimeout = 60000; // 60s (réduit de 180s)
   } else if (isHostinger) {
-    // Hostinger local : timeouts moyens (augmentés pour DATA command)
-    connectionTimeout = 45000; // 45s (augmenté)
-    greetingTimeout = 45000; // 45s (augmenté)
-    socketTimeout = 120000; // 120s (2 minutes - augmenté pour gérer les timeouts DATA)
+    // Hostinger local : timeouts moyens
+    connectionTimeout = 20000; // 20s
+    greetingTimeout = 20000; // 20s
+    socketTimeout = 45000; // 45s
   } else if (isVercel) {
     // Autres providers sur Vercel : timeouts moyens
-    connectionTimeout = 30000; // 30s
-    greetingTimeout = 30000; // 30s
-    socketTimeout = 45000; // 45s
-  } else {
-    // Autres providers local : timeouts courts
     connectionTimeout = 20000; // 20s
     greetingTimeout = 20000; // 20s
     socketTimeout = 30000; // 30s
+  } else {
+    // Autres providers local : timeouts courts
+    connectionTimeout = 15000; // 15s
+    greetingTimeout = 15000; // 15s
+    socketTimeout = 25000; // 25s
   }
   
   // Déterminer si on utilise SSL (secure) ou STARTTLS
@@ -82,6 +84,7 @@ function createTransporter(forceNew = false) {
     useSecure = smtpPort === 465;
   }
   
+  // Configuration SMTP simplifiée et optimisée pour éviter les timeouts
   const smtpConfig = {
     host: smtpHost,
     port: smtpPort,
@@ -90,43 +93,30 @@ function createTransporter(forceNew = false) {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASSWORD
     },
-    // Options de connexion avec timeouts adaptés selon le provider et l'environnement
+    // Timeouts optimisés
     connectionTimeout: connectionTimeout,
     greetingTimeout: greetingTimeout,
     socketTimeout: socketTimeout,
-    // Options supplémentaires pour Vercel/Serverless
-    // Sur Vercel, désactiver le pool car chaque fonction est isolée
-    pool: !isVercel, // Pool uniquement en local, pas sur Vercel
-    ...(isVercel ? {
-      // Configuration pour Vercel (pas de pool)
-      // Chaque requête crée sa propre connexion
-      // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
-      disableFileAccess: true,
-      disableUrlAccess: true,
+    // DÉSACTIVER le pool sur Vercel (obligatoire pour serverless)
+    pool: false, // TOUJOURS false pour éviter les problèmes de connexion persistante
+    // Options critiques pour Vercel/Serverless
+    disableFileAccess: true,
+    disableUrlAccess: true,
+    // Options TLS simplifiées pour Hostinger
+    ...(isHostinger ? {
+      tls: {
+        rejectUnauthorized: false, // Accepter les certificats
+        minVersion: 'TLSv1.2', // Version TLS minimale
+        ...(useSecure ? {} : {
+          // Pour STARTTLS (port 587), ne pas forcer requireTLS si ça cause des problèmes
+          // requireTLS: false // Désactivé pour éviter les timeouts STARTTLS
+        })
+      }
     } : {
-      // Configuration pour local (avec pool)
-      maxConnections: 1, // Nombre max de connexions simultanées
-      maxMessages: 3, // Nombre max de messages par connexion
-      rateDelta: 1000, // Délai entre les messages (ms)
-      rateLimit: 5, // Nombre max de messages par rateDelta
-    }),
-    // Options spécifiques pour Hostinger
-    ...(isHostinger && {
-      // Hostinger nécessite parfois des options supplémentaires
-      // Sur Vercel avec port 465, ne pas forcer requireTLS (déjà en SSL)
-      ...(useSecure ? {
-        // Port 465 (SSL direct) - pas besoin de requireTLS
-        tls: {
-          rejectUnauthorized: false // Accepter les certificats auto-signés si nécessaire
-        }
-      } : {
-        // Port 587 (STARTTLS)
-        requireTLS: true, // Forcer TLS
-        tls: {
-          rejectUnauthorized: false, // Accepter les certificats auto-signés si nécessaire
-          ciphers: 'SSLv3' // Forcer certains ciphers si nécessaire
-        }
-      })
+      // Pour les autres providers, configuration TLS standard
+      tls: {
+        rejectUnauthorized: false
+      }
     })
   };
 
@@ -191,19 +181,25 @@ function initTransporter() {
  * @param {string} options.from - Expéditeur (optionnel, utilise CONTACT_EMAIL par défaut)
  * @returns {Promise} Résultat de l'envoi
  */
+/**
+ * Envoie un email de manière asynchrone et non-bloquante
+ * Cette fonction peut être appelée sans await pour ne pas bloquer l'application
+ */
 async function sendEmail(options) {
+  // Vérifier si l'envoi d'email est désactivé (variable d'environnement)
+  if (process.env.DISABLE_EMAIL === 'true' || process.env.DISABLE_EMAIL === '1') {
+    console.log('📧 Envoi d\'email désactivé (DISABLE_EMAIL=true)');
+    return { success: false, message: 'Service email désactivé' };
+  }
+
   const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
   
-  // Sur Vercel, créer un nouveau transporteur à chaque fois (pas de cache)
-  // En local, réutiliser le transporteur mis en cache
-  let emailTransporter = createTransporter(isVercel);
-  
-  if (!emailTransporter) {
-    // Toujours logger pour diagnostiquer les problèmes
-    console.error('❌ Email non envoyé : transporteur non configuré');
-    console.error('   Vérifiez que SMTP_USER et SMTP_PASSWORD sont définis dans .env');
-    console.error(`   SMTP_USER: ${process.env.SMTP_USER || 'non défini'}`);
-    console.error(`   SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? 'défini' : 'non défini'}`);
+  // Vérifier la configuration SMTP
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Email non envoyé : transporteur non configuré');
+      console.error('   Vérifiez que SMTP_USER et SMTP_PASSWORD sont définis dans .env');
+    }
     return { success: false, message: 'Service email non configuré' };
   }
 
@@ -246,43 +242,58 @@ async function sendEmail(options) {
       console.log(`   Taille email: ${emailSizeKB} KB`);
     }
 
-    // Log avant l'envoi pour le diagnostic
-    console.log(`📧 Tentative d'envoi d'email à ${options.to} (sujet: ${options.subject})...`);
+    // Log avant l'envoi pour le diagnostic (seulement en dev)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📧 Tentative d'envoi d'email à ${options.to} (sujet: ${options.subject})...`);
+    }
     
-    // Retry logic pour les timeouts (surtout sur Vercel)
-    const maxRetries = isVercel ? 3 : 2; // 3 tentatives sur Vercel, 2 en local
+    // Retry logic simplifié avec timeout plus court pour éviter les blocages
+    const maxRetries = isVercel ? 2 : 1; // Réduire à 2 tentatives max sur Vercel
     let lastError = null;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       let currentTransporter = null;
+      let timeoutId = null;
       try {
-        // Créer un NOUVEAU transporteur pour chaque tentative (surtout important sur Vercel)
-        // Cela évite les problèmes de connexion réutilisée ou corrompue
+        // Créer un NOUVEAU transporteur pour chaque tentative
         currentTransporter = createTransporter(true);
         if (!currentTransporter) {
           throw new Error('Impossible de créer le transporteur SMTP');
         }
         
         if (attempt > 1) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 2), 10000); // Délai exponentiel max 10s
-          console.log(`   🔄 Nouvelle tentative (${attempt}/${maxRetries}) après ${delay}ms...`);
+          const delay = Math.min(2000 * (attempt - 1), 5000); // Délai progressif max 5s
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`   🔄 Nouvelle tentative (${attempt}/${maxRetries}) après ${delay}ms...`);
+          }
           await new Promise(resolve => setTimeout(resolve, delay));
         }
         
-        // Ajouter un timeout global pour éviter que l'opération ne bloque indéfiniment
-        const timeoutMs = isVercel ? 200000 : 150000; // 200s sur Vercel, 150s en local
+        // Timeout global RÉDUIT pour éviter les blocages longs
+        // Hostinger peut être lent, mais pas plus de 60s par tentative
+        const timeoutMs = isVercel ? 60000 : 45000; // 60s sur Vercel, 45s en local
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error(`Timeout global de ${timeoutMs}ms dépassé`)), timeoutMs);
+          timeoutId = setTimeout(() => {
+            reject(new Error(`Timeout global de ${timeoutMs}ms dépassé`));
+          }, timeoutMs);
         });
         
+        // Envoyer l'email avec timeout
         const sendPromise = currentTransporter.sendMail(mailOptions);
         const info = await Promise.race([sendPromise, timeoutPromise]);
+        
+        // Annuler le timeout si l'envoi réussit
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
     
-        // Toujours logger les envois réussis pour le diagnostic
-        if (attempt > 1) {
-          console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId);
-        } else {
-          console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
+        // Logger les envois réussis (seulement en dev ou si plusieurs tentatives)
+        if (process.env.NODE_ENV === 'development' || attempt > 1) {
+          if (attempt > 1) {
+            console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId);
+          } else {
+            console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
+          }
         }
         
         // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
@@ -300,29 +311,45 @@ async function sendEmail(options) {
       } catch (error) {
         lastError = error;
         
-        // Fermer la connexion en cas d'erreur
-        if (currentTransporter && typeof currentTransporter.close === 'function') {
+        // Annuler le timeout si présent
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        
+        // Fermer la connexion en cas d'erreur (CRITIQUE pour éviter les fuites)
+        if (currentTransporter) {
           try {
-            currentTransporter.close();
+            if (typeof currentTransporter.close === 'function') {
+              currentTransporter.close();
+            }
+            // Forcer la destruction du transporteur
+            currentTransporter = null;
           } catch (closeError) {
             // Ignorer les erreurs de fermeture
           }
         }
         
-        // Si c'est un timeout ou une erreur DATA (421) et qu'on a encore des tentatives, continuer
+        // Détecter les erreurs de timeout
         const isTimeoutError = error.code === 'ETIMEDOUT' || 
                               error.code === 'ECONNRESET' || 
                               error.code === 'EENVELOPE' ||
                               error.message?.includes('Timeout global') ||
+                              error.message?.includes('timeout') ||
                               (error.responseCode === 421);
         
+        // Si c'est un timeout et qu'on a encore des tentatives, continuer
         if (isTimeoutError && attempt < maxRetries) {
-          console.warn(`   ⚠️  Tentative ${attempt} échouée (${error.code || error.responseCode || 'timeout'}), nouvelle tentative...`);
+          // Logger seulement en dev ou si c'est la dernière tentative
+          if (process.env.NODE_ENV === 'development' || attempt === maxRetries - 1) {
+            console.warn(`   ⚠️  Tentative ${attempt} échouée (${error.code || error.responseCode || error.message}), nouvelle tentative...`);
+          }
+          // Attendre un peu avant de réessayer
+          await new Promise(resolve => setTimeout(resolve, 1000));
           continue;
         }
         
-        // Si c'est la dernière tentative, propager l'erreur
-        if (attempt >= maxRetries) {
+        // Si c'est la dernière tentative ou erreur non-timeout, propager l'erreur
+        if (attempt >= maxRetries || !isTimeoutError) {
           throw error;
         }
       }
@@ -604,9 +631,33 @@ async function sendShareNotification(articleData, platform) {
 }
 
 
+/**
+ * Envoie un email de manière asynchrone et non-bloquante
+ * Cette fonction ne bloque JAMAIS l'application, même en cas d'erreur
+ * @param {Object} options - Options de l'email
+ * @returns {Promise} Résultat de l'envoi (toujours résolu, jamais rejeté)
+ */
+async function sendEmailAsync(options) {
+  // Exécuter l'envoi dans un contexte asynchrone qui ne bloque jamais
+  return Promise.resolve().then(async () => {
+    try {
+      return await sendEmail(options);
+    } catch (error) {
+      // Logger l'erreur mais ne jamais la propager
+      console.error('❌ Erreur lors de l\'envoi asynchrone d\'email (non-bloquant):', error.message);
+      return { 
+        success: false, 
+        error: error.message,
+        code: error.code 
+      };
+    }
+  });
+}
+
 module.exports = {
   initTransporter,
   sendEmail,
+  sendEmailAsync, // Nouvelle fonction non-bloquante
   sendContactConfirmation,
   sendContactNotification,
   sendShareNotification

@@ -18,18 +18,30 @@ exports.sendMessage = async (req, res, next) => {
   try {
     const contact = await Contact.create(req.body);
 
-    // Envoyer un email de confirmation à l'utilisateur (non bloquant)
-    sendContactConfirmation(contact.email, contact.name, contact.subject)
-      .catch(err => console.error('Erreur envoi email confirmation contact:', err));
+    // Envoyer un email de confirmation à l'utilisateur (non bloquant, asynchrone)
+    setImmediate(() => {
+      sendContactConfirmation(contact.email, contact.name, contact.subject)
+        .catch(err => {
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Erreur envoi email confirmation contact:', err.message);
+          }
+        });
+    });
 
-    // Envoyer une notification à l'équipe (non bloquant)
-    sendContactNotification({
-      name: contact.name,
-      email: contact.email,
-      phone: contact.phone,
-      subject: contact.subject,
-      message: contact.message
-    }).catch(err => console.error('Erreur envoi email notification contact:', err));
+    // Envoyer une notification à l'équipe (non bloquant, asynchrone)
+    setImmediate(() => {
+      sendContactNotification({
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone,
+        subject: contact.subject,
+        message: contact.message
+      }).catch(err => {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Erreur envoi email notification contact:', err.message);
+        }
+      });
+    });
 
     res.status(201).json({
       success: true,

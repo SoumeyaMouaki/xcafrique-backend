@@ -291,20 +291,28 @@ exports.shareArticle = async (req, res, next) => {
     };
 
     // Envoyer une notification par email (en arrière-plan, ne pas bloquer la réponse)
-    sendShareNotification(articleData, platform || 'other')
-      .then(result => {
-        if (result.success) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✅ Notification de partage envoyée pour: ${article.title}`);
+    // Utiliser setImmediate pour s'assurer que cela ne bloque jamais
+    setImmediate(() => {
+      sendShareNotification(articleData, platform || 'other')
+        .then(result => {
+          if (result.success) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`✅ Notification de partage envoyée pour: ${article.title}`);
+            }
+          } else {
+            // Logger silencieusement en production, plus verbeux en dev
+            if (process.env.NODE_ENV === 'development') {
+              console.warn(`⚠️  Échec envoi notification de partage: ${result.message || result.error}`);
+            }
           }
-        } else {
-          console.warn(`⚠️  Échec envoi notification de partage: ${result.message || result.error}`);
-        }
-      })
-      .catch(err => {
-        // Logger l'erreur mais ne pas bloquer la réponse
-        console.error('Erreur lors de l\'envoi de la notification de partage:', err.message);
-      });
+        })
+        .catch(err => {
+          // Logger l'erreur mais ne jamais bloquer
+          if (process.env.NODE_ENV === 'development') {
+            console.error('Erreur lors de l\'envoi de la notification de partage:', err.message);
+          }
+        });
+    });
 
     // Envoyer une notification SSE en temps réel (si des clients sont connectés)
     try {
