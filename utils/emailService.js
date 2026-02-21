@@ -196,10 +196,10 @@ async function sendEmail(options) {
   
   // Vérifier la configuration SMTP
   if (!process.env.SMTP_USER || !process.env.SMTP_PASSWORD) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('❌ Email non envoyé : transporteur non configuré');
-      console.error('   Vérifiez que SMTP_USER et SMTP_PASSWORD sont définis dans .env');
-    }
+    console.error('❌ Email non envoyé : transporteur non configuré');
+    console.error('   Vérifiez que SMTP_USER et SMTP_PASSWORD sont définis dans les variables d\'environnement');
+    console.error(`   SMTP_USER: ${process.env.SMTP_USER || 'non défini'}`);
+    console.error(`   SMTP_PASSWORD: ${process.env.SMTP_PASSWORD ? 'défini' : 'non défini'}`);
     return { success: false, message: 'Service email non configuré' };
   }
 

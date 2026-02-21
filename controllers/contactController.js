@@ -96,25 +96,51 @@ exports.sendMessage = async (req, res, next) => {
     // Utiliser setImmediate pour s'assurer que la réponse est partie avant
     setImmediate(() => {
       // Email de confirmation à l'utilisateur
+      console.log(`📧 Tentative d'envoi email confirmation à ${contact.email}...`);
       sendContactConfirmation(contact.email, contact.name, contact.subject)
+        .then(result => {
+          if (result.success) {
+            console.log(`✅ Email confirmation envoyé à ${contact.email}`);
+          } else {
+            console.error(`❌ Échec envoi email confirmation à ${contact.email}:`, result.error || result.message);
+            if (result.code) {
+              console.error(`   Code erreur: ${result.code}`);
+            }
+          }
+        })
         .catch(err => {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Erreur envoi email confirmation contact:', err.message);
+          console.error(`❌ Erreur envoi email confirmation contact (${contact.email}):`, err.message);
+          if (err.stack && process.env.NODE_ENV === 'development') {
+            console.error('   Stack:', err.stack);
           }
         });
 
       // Notification à l'équipe
+      const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
+      console.log(`📧 Tentative d'envoi email notification à ${contactEmail}...`);
       sendContactNotification({
         name: contact.name,
         email: contact.email,
         phone: contact.phone,
         subject: contact.subject,
         message: contact.message
-      }).catch(err => {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Erreur envoi email notification contact:', err.message);
-        }
-      });
+      })
+        .then(result => {
+          if (result.success) {
+            console.log(`✅ Email notification envoyé à ${contactEmail}`);
+          } else {
+            console.error(`❌ Échec envoi email notification à ${contactEmail}:`, result.error || result.message);
+            if (result.code) {
+              console.error(`   Code erreur: ${result.code}`);
+            }
+          }
+        })
+        .catch(err => {
+          console.error(`❌ Erreur envoi email notification contact (${contactEmail}):`, err.message);
+          if (err.stack && process.env.NODE_ENV === 'development') {
+            console.error('   Stack:', err.stack);
+          }
+        });
     });
 
   } catch (error) {
