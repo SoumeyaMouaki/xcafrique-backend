@@ -44,6 +44,7 @@ Pour publier un article de ce dossier :
 
 1. **Option 1 : Via Script**
    ```bash
+   node scripts/publish.js article2.json   
    node scripts/createArticle.js
    # Modifiez le script pour pointer vers ready-to-publish/
    ```

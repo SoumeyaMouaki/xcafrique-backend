@@ -62,6 +62,9 @@ export interface Article {
   tags: string[];
   publishedAt: string; // ISO date string
   views: number;
+  shareCount: number; // Nombre de partages de l'article
+  videoUrl?: string; // URL YouTube originale (si vidéo)
+  videoEmbedUrl?: string; // URL YouTube embed (convertie automatiquement)
   status: 'published';
   createdAt: string; // ISO date string
   updatedAt: string; // ISO date string
@@ -131,5 +134,21 @@ export interface PaginationInfo {
   pages: number;
   total: number;
   count: number;
+}
+
+// ============================================
+// Partage d'articles
+// ============================================
+
+export type SharePlatform = 'facebook' | 'twitter' | 'linkedin' | 'whatsapp' | 'email' | 'copy' | 'other';
+
+export interface ShareArticleRequest {
+  platform: SharePlatform;
+}
+
+export interface ShareArticleResponse extends ApiResponse<Article> {
+  success: true;
+  message: string;
+  data: Article;
 }
 

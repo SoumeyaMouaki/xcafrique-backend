@@ -1,6 +1,10 @@
 const Article = require('../models/Article');
 const Category = require('../models/Category');
 const { convertToEmbedUrl } = require('../utils/youtubeHelper');
+const { sendShareNotification } = require('../utils/emailService');
+const sseService = require('../services/sseService');
+const { sendShareNotification } = require('../utils/emailService');
+const sseService = require('../services/sseService');
 
 /**
  * Controller pour la gestion des articles
@@ -139,16 +143,21 @@ exports.getAllArticles = async (req, res, next) => {
       .select('-__v')
       .lean(); // Utiliser lean() pour de meilleures performances
 
-    // Convertir les URLs YouTube en URLs embed pour chaque article
+    // Convertir les URLs YouTube en URLs embed pour chaque article et s'assurer que shareCount est défini
     const articlesWithEmbedUrl = articles.map(article => {
+      const articleWithDefaults = {
+        ...article,
+        shareCount: article.shareCount || 0
+      };
+      
       if (article.videoUrl) {
         const embedUrl = convertToEmbedUrl(article.videoUrl);
         return {
-          ...article,
+          ...articleWithDefaults,
           videoEmbedUrl: embedUrl || article.videoUrl // Fallback sur l'URL originale si conversion échoue
         };
       }
-      return article;
+      return articleWithDefaults;
     });
 
     // Compter le total d'articles pour la pagination
@@ -227,12 +236,112 @@ exports.getArticleBySlug = async (req, res, next) => {
     // Incrémenter les vues dans la réponse pour l'affichage immédiat
     const articleWithViews = {
       ...articleWithEmbed,
-      views: (article.views || 0) + 1
+      views: (article.views || 0) + 1,
+      shareCount: article.shareCount || 0
     };
 
     res.status(200).json({
       success: true,
       data: articleWithViews
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/articles/:slug/share
+ * @desc    Enregistrer un partage d'article et envoyer une notification
+ * @access  Public
+ */
+exports.shareArticle = async (req, res, next) => {
+  try {
+    const { slug } = req.params;
+    const { platform } = req.body; // facebook, twitter, linkedin, whatsapp, email, copy, etc.
+
+    // Vérifier que MongoDB est connecté
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      const connectDB = require('../config/database');
+      await connectDB();
+    }
+
+    // Trouver l'article
+    const article = await Article.findOne({ slug, status: 'published' })
+      .populate('category', 'name slug color description')
+      .lean();
+
+    if (!article) {
+      return res.status(404).json({
+        success: false,
+        message: 'Article non trouvé'
+      });
+    }
+
+    // Incrémenter le compteur de partages
+    const updatedArticle = await Article.findOneAndUpdate(
+      { slug },
+      { $inc: { shareCount: 1 } },
+      { new: true }
+    ).populate('category', 'name slug color description').lean();
+
+    // Préparer les données pour la notification
+    const articleData = {
+      ...updatedArticle,
+      shareCount: updatedArticle.shareCount || 0
+    };
+
+    // Envoyer une notification par email (en arrière-plan, ne pas bloquer la réponse)
+    sendShareNotification(articleData, platform || 'other')
+      .then(result => {
+        if (result.success) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ Notification de partage envoyée pour: ${article.title}`);
+          }
+        } else {
+          console.warn(`⚠️  Échec envoi notification de partage: ${result.message || result.error}`);
+        }
+      })
+      .catch(err => {
+        // Logger l'erreur mais ne pas bloquer la réponse
+        console.error('Erreur lors de l\'envoi de la notification de partage:', err.message);
+      });
+
+    // Envoyer une notification SSE en temps réel (si des clients sont connectés)
+    try {
+      sseService.broadcast('article-shared', {
+        articleId: updatedArticle._id.toString(),
+        articleTitle: updatedArticle.title,
+        articleSlug: updatedArticle.slug,
+        platform: platform || 'other',
+        shareCount: updatedArticle.shareCount,
+        timestamp: new Date().toISOString()
+      });
+    } catch (sseError) {
+      // Ignorer les erreurs SSE (pas critique)
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('Erreur SSE lors du partage:', sseError.message);
+      }
+    }
+
+    // Convertir l'URL YouTube en URL embed si présente
+    let articleWithEmbed = articleData;
+    if (articleData.videoUrl) {
+      const embedUrl = convertToEmbedUrl(articleData.videoUrl);
+      articleWithEmbed = {
+        ...articleData,
+        videoEmbedUrl: embedUrl || articleData.videoUrl
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Partage enregistré avec succès',
+      data: {
+        ...articleWithEmbed,
+        shareCount: updatedArticle.shareCount
+      }
     });
 
   } catch (error) {

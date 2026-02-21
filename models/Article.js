@@ -88,6 +88,10 @@ const articleSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  shareCount: {
+    type: Number,
+    default: 0
+  },
   publishedAt: {
     type: Date,
     default: null

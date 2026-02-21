@@ -89,6 +89,20 @@ class ApiClient {
   async getCategoryById(id) {
     return this.request(`/categories/${id}`);
   }
+
+  /**
+   * POST /api/articles/:slug/share
+   * Enregistrer un partage d'article
+   * @param {string} slug - Slug de l'article
+   * @param {string} platform - Plateforme de partage (facebook, twitter, linkedin, whatsapp, email, copy, other)
+   * @returns {Promise} Réponse avec l'article mis à jour et le nouveau shareCount
+   */
+  async shareArticle(slug, platform = 'other') {
+    return this.request(`/articles/${slug}/share`, {
+      method: 'POST',
+      body: JSON.stringify({ platform }),
+    });
+  }
 }
 
 // Export d'une instance singleton

@@ -10,10 +10,15 @@ let transporter = null;
 let smtpWarningShown = false; // Pour éviter les warnings répétés
 
 /**
- * Initialise le transporteur email
+ * Crée un nouveau transporteur email (sans cache sur Vercel)
+ * @param {boolean} forceNew - Forcer la création d'un nouveau transporteur même si un existe
  */
-function initTransporter() {
-  if (transporter) {
+function createTransporter(forceNew = false) {
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+  
+  // Sur Vercel, toujours créer un nouveau transporteur (pas de cache)
+  // En local, on peut réutiliser le transporteur
+  if (!forceNew && !isVercel && transporter) {
     return transporter;
   }
 
@@ -22,13 +27,14 @@ function initTransporter() {
   const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
   let smtpPort = parseInt(process.env.SMTP_PORT || '587');
   const isHostinger = smtpHost.includes('hostinger');
-  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
   
-  // Sur Vercel avec Hostinger, utiliser le port 465 (SSL) par défaut si non spécifié
-  // Le port 587 (STARTTLS) peut avoir des problèmes de timeout sur Vercel
-  if (isHostinger && isVercel && !process.env.SMTP_PORT) {
-    smtpPort = 465;
-    console.log('⚠️  Hostinger sur Vercel détecté - Utilisation du port 465 (SSL) par défaut pour éviter les timeouts STARTTLS');
+  // Sur Vercel avec Hostinger, FORCER le port 465 (SSL) pour éviter les timeouts
+  // Le port 587 (STARTTLS) a des problèmes de timeout récurrents sur Vercel
+  if (isHostinger && isVercel) {
+    if (smtpPort !== 465) {
+      console.warn(`⚠️  Hostinger sur Vercel: Forçage du port 465 (SSL) au lieu de ${smtpPort} pour éviter les timeouts`);
+      smtpPort = 465;
+    }
   }
   
   // Configuration spécifique pour Hostinger et Vercel (timeouts très longs)
@@ -36,15 +42,15 @@ function initTransporter() {
   let connectionTimeout, greetingTimeout, socketTimeout;
   
   if (isHostinger && isVercel) {
-    // Hostinger sur Vercel : timeouts très longs
-    connectionTimeout = 60000; // 60s
-    greetingTimeout = 60000; // 60s
-    socketTimeout = 90000; // 90s
+    // Hostinger sur Vercel : timeouts très longs (augmentés pour DATA command)
+    connectionTimeout = 90000; // 90s (augmenté)
+    greetingTimeout = 90000; // 90s (augmenté)
+    socketTimeout = 180000; // 180s (3 minutes - augmenté pour gérer les timeouts DATA)
   } else if (isHostinger) {
-    // Hostinger local : timeouts moyens
-    connectionTimeout = 30000; // 30s
-    greetingTimeout = 30000; // 30s
-    socketTimeout = 60000; // 60s
+    // Hostinger local : timeouts moyens (augmentés pour DATA command)
+    connectionTimeout = 45000; // 45s (augmenté)
+    greetingTimeout = 45000; // 45s (augmenté)
+    socketTimeout = 120000; // 120s (2 minutes - augmenté pour gérer les timeouts DATA)
   } else if (isVercel) {
     // Autres providers sur Vercel : timeouts moyens
     connectionTimeout = 30000; // 30s
@@ -60,12 +66,17 @@ function initTransporter() {
   // Déterminer si on utilise SSL (secure) ou STARTTLS
   // Port 465 = SSL direct (secure: true)
   // Port 587 = STARTTLS (secure: false)
-  // Sur Vercel avec Hostinger, forcer SSL si port 465
+  // Sur Vercel avec Hostinger, FORCER SSL pour le port 465
   let useSecure = process.env.SMTP_SECURE === 'true';
-  if (isHostinger && isVercel && smtpPort === 465) {
-    useSecure = true; // Forcer SSL pour le port 465 sur Vercel
-  } else if (isHostinger && isVercel && smtpPort === 587) {
-    useSecure = false; // STARTTLS pour le port 587
+  if (isHostinger && isVercel) {
+    // Sur Vercel avec Hostinger, forcer SSL pour éviter les problèmes STARTTLS
+    if (smtpPort === 465) {
+      useSecure = true; // Forcer SSL pour le port 465
+    } else {
+      // Si on est sur un autre port, avertir et forcer SSL
+      console.warn(`⚠️  Hostinger sur Vercel: Recommandation d'utiliser le port 465 avec SSL pour éviter les timeouts`);
+      useSecure = smtpPort === 465; // SSL uniquement si port 465
+    }
   } else if (process.env.SMTP_SECURE === undefined) {
     // Si non spécifié, déterminer automatiquement selon le port
     useSecure = smtpPort === 465;
@@ -89,6 +100,9 @@ function initTransporter() {
     ...(isVercel ? {
       // Configuration pour Vercel (pas de pool)
       // Chaque requête crée sa propre connexion
+      // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
+      disableFileAccess: true,
+      disableUrlAccess: true,
     } : {
       // Configuration pour local (avec pool)
       maxConnections: 1, // Nombre max de connexions simultanées
@@ -139,17 +153,32 @@ function initTransporter() {
     console.log(`   User: ${smtpConfig.auth.user}`);
     console.log(`   Secure: ${smtpConfig.secure}`);
     if (isHostinger && isVercel) {
-      console.log(`   ⚙️  Configuration Hostinger sur Vercel avec timeouts très longs (60s/90s)`);
+      console.log(`   ⚙️  Configuration Hostinger sur Vercel avec timeouts très longs (90s/180s)`);
+      console.log(`   ⚙️  Port 465 (SSL) forcé pour éviter les timeouts STARTTLS`);
     } else if (isHostinger) {
-      console.log(`   ⚙️  Configuration Hostinger avec timeouts augmentés (30s/60s)`);
+      console.log(`   ⚙️  Configuration Hostinger avec timeouts augmentés (45s/120s)`);
     } else if (isVercel) {
       console.log(`   ⚙️  Configuration Vercel avec timeouts augmentés (30s/45s)`);
     }
     smtpWarningShown = true; // Marquer comme affiché pour éviter les répétitions
   }
 
-  transporter = nodemailer.createTransport(smtpConfig);
-  return transporter;
+  const newTransporter = nodemailer.createTransport(smtpConfig);
+  
+  // Sur Vercel, ne pas mettre en cache (créer un nouveau à chaque fois)
+  // En local, mettre en cache pour réutilisation
+  if (!isVercel) {
+    transporter = newTransporter;
+  }
+  
+  return newTransporter;
+}
+
+/**
+ * Initialise le transporteur email (alias pour compatibilité)
+ */
+function initTransporter() {
+  return createTransporter();
 }
 
 /**
@@ -163,7 +192,11 @@ function initTransporter() {
  * @returns {Promise} Résultat de l'envoi
  */
 async function sendEmail(options) {
-  const emailTransporter = initTransporter();
+  const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+  
+  // Sur Vercel, créer un nouveau transporteur à chaque fois (pas de cache)
+  // En local, réutiliser le transporteur mis en cache
+  let emailTransporter = createTransporter(isVercel);
   
   if (!emailTransporter) {
     // Toujours logger pour diagnostiquer les problèmes
@@ -200,35 +233,50 @@ async function sendEmail(options) {
       text: options.text || options.html.replace(/<[^>]*>/g, '') // Extraire le texte du HTML si pas fourni
     };
 
+    // Vérifier la taille de l'email (peut causer des timeouts si trop volumineux)
+    const emailSize = Buffer.byteLength(JSON.stringify(mailOptions), 'utf8');
+    const emailSizeKB = (emailSize / 1024).toFixed(2);
+    if (emailSize > 1024 * 1024) { // Plus de 1MB
+      console.warn(`⚠️  Email volumineux détecté (${emailSizeKB} KB). Cela peut causer des timeouts.`);
+    }
+
     // Log de l'adresse "from" utilisée pour le diagnostic
     if (process.env.NODE_ENV === 'development') {
       console.log(`   From: ${fromAddress} (SMTP_USER: ${smtpUser})`);
+      console.log(`   Taille email: ${emailSizeKB} KB`);
     }
 
     // Log avant l'envoi pour le diagnostic
     console.log(`📧 Tentative d'envoi d'email à ${options.to} (sujet: ${options.subject})...`);
     
     // Retry logic pour les timeouts (surtout sur Vercel)
-    const maxRetries = process.env.VERCEL ? 2 : 1; // 2 tentatives sur Vercel, 1 en local
+    const maxRetries = isVercel ? 3 : 2; // 3 tentatives sur Vercel, 2 en local
     let lastError = null;
-    let currentTransporter = emailTransporter;
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let currentTransporter = null;
       try {
-        if (attempt > 1) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 2), 5000); // Délai exponentiel max 5s
-          console.log(`   🔄 Nouvelle tentative (${attempt}/${maxRetries}) après ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          
-          // Recréer le transporteur pour forcer une nouvelle connexion
-          transporter = null;
-          currentTransporter = initTransporter();
-          if (!currentTransporter) {
-            throw new Error('Impossible de recréer le transporteur SMTP');
-          }
+        // Créer un NOUVEAU transporteur pour chaque tentative (surtout important sur Vercel)
+        // Cela évite les problèmes de connexion réutilisée ou corrompue
+        currentTransporter = createTransporter(true);
+        if (!currentTransporter) {
+          throw new Error('Impossible de créer le transporteur SMTP');
         }
         
-        const info = await currentTransporter.sendMail(mailOptions);
+        if (attempt > 1) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 2), 10000); // Délai exponentiel max 10s
+          console.log(`   🔄 Nouvelle tentative (${attempt}/${maxRetries}) après ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+        
+        // Ajouter un timeout global pour éviter que l'opération ne bloque indéfiniment
+        const timeoutMs = isVercel ? 200000 : 150000; // 200s sur Vercel, 150s en local
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error(`Timeout global de ${timeoutMs}ms dépassé`)), timeoutMs);
+        });
+        
+        const sendPromise = currentTransporter.sendMail(mailOptions);
+        const info = await Promise.race([sendPromise, timeoutPromise]);
     
         // Toujours logger les envois réussis pour le diagnostic
         if (attempt > 1) {
@@ -236,18 +284,47 @@ async function sendEmail(options) {
         } else {
           console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
         }
-    return { success: true, messageId: info.messageId };
-  } catch (error) {
+        
+        // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
+        // Important surtout sur Vercel/serverless
+        if (currentTransporter && typeof currentTransporter.close === 'function') {
+          try {
+            currentTransporter.close();
+          } catch (closeError) {
+            // Ignorer les erreurs de fermeture
+            console.warn('   ⚠️  Erreur lors de la fermeture du transporteur (non bloquant):', closeError.message);
+          }
+        }
+        
+        return { success: true, messageId: info.messageId };
+      } catch (error) {
         lastError = error;
         
-        // Si c'est un timeout et qu'on a encore des tentatives, continuer
-        if ((error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET') && attempt < maxRetries) {
-          console.warn(`   ⚠️  Tentative ${attempt} échouée (${error.code}), nouvelle tentative...`);
+        // Fermer la connexion en cas d'erreur
+        if (currentTransporter && typeof currentTransporter.close === 'function') {
+          try {
+            currentTransporter.close();
+          } catch (closeError) {
+            // Ignorer les erreurs de fermeture
+          }
+        }
+        
+        // Si c'est un timeout ou une erreur DATA (421) et qu'on a encore des tentatives, continuer
+        const isTimeoutError = error.code === 'ETIMEDOUT' || 
+                              error.code === 'ECONNRESET' || 
+                              error.code === 'EENVELOPE' ||
+                              error.message?.includes('Timeout global') ||
+                              (error.responseCode === 421);
+        
+        if (isTimeoutError && attempt < maxRetries) {
+          console.warn(`   ⚠️  Tentative ${attempt} échouée (${error.code || error.responseCode || 'timeout'}), nouvelle tentative...`);
           continue;
         }
         
-        // Sinon, propager l'erreur
-        throw error;
+        // Si c'est la dernière tentative, propager l'erreur
+        if (attempt >= maxRetries) {
+          throw error;
+        }
       }
     }
     
@@ -310,6 +387,32 @@ async function sendEmail(options) {
         console.error('         SMTP_PORT=465');
         console.error('         SMTP_SECURE=true');
         console.error('      💡 Le port 465 évite les problèmes de STARTTLS et est plus fiable sur Vercel');
+      }
+    } else if (error.code === 'EENVELOPE' || (error.responseCode === 421 && error.command === 'DATA')) {
+      // Erreur spécifique DATA command timeout sur Hostinger
+      errorMessage = 'Timeout lors de l\'envoi des données email. Le serveur SMTP a expiré pendant la transmission des données.';
+      console.error('❌ Erreur envoi email (DATA timeout):', errorMessage);
+      console.error('   Host:', process.env.SMTP_HOST);
+      console.error('   Port:', process.env.SMTP_PORT);
+      console.error('   Response:', error.response || error.message);
+      console.error('   Response Code:', error.responseCode);
+      console.error('   Command:', error.command);
+      
+      if (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('hostinger')) {
+        console.error('   🔧 Solutions pour Hostinger:');
+        console.error('      1. ✅ Utilisez le port 465 avec SSL direct (plus fiable):');
+        console.error('         SMTP_PORT=465');
+        console.error('         SMTP_SECURE=true');
+        console.error('      2. 💡 Vérifiez la taille de l\'email (peut être trop volumineux)');
+        console.error('      3. 💡 Les timeouts ont été augmentés à 120s sur Vercel (90s en local)');
+        console.error('      4. 💡 Le système réessaiera automatiquement (2 tentatives sur Vercel)');
+        console.error('      5. 💡 Vérifiez votre connexion réseau et la charge du serveur SMTP');
+        console.error('      6. 💡 Si le problème persiste, contactez le support Hostinger');
+      } else {
+        console.error('   💡 Solutions générales:');
+        console.error('      - Vérifiez la taille de l\'email (réduire si > 1MB)');
+        console.error('      - Vérifiez votre connexion réseau');
+        console.error('      - Le système réessaiera automatiquement');
       }
     } else {
     console.error('❌ Erreur envoi email:', error);
@@ -421,11 +524,91 @@ async function sendContactNotification(contactData) {
   });
 }
 
+/**
+ * Envoie un email de notification lorsqu'un article est partagé
+ * @param {Object} articleData - Données de l'article partagé
+ * @param {string} platform - Plateforme de partage (facebook, twitter, linkedin, etc.)
+ */
+async function sendShareNotification(articleData, platform) {
+  const platformNames = {
+    facebook: 'Facebook',
+    twitter: 'Twitter/X',
+    linkedin: 'LinkedIn',
+    whatsapp: 'WhatsApp',
+    email: 'Email',
+    copy: 'Lien copié',
+    other: 'Autre plateforme'
+  };
+
+  const platformName = platformNames[platform] || platform || 'une plateforme';
+  const articleUrl = process.env.FRONTEND_URL 
+    ? `${process.env.FRONTEND_URL.split(',')[0]}/article/${articleData.slug}`
+    : `https://xcafrique.org/article/${articleData.slug}`;
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #1a1a1a; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .article-box { background-color: white; padding: 15px; border-left: 4px solid #1a1a1a; margin: 15px 0; }
+        .button { display: inline-block; padding: 12px 24px; background-color: #1a1a1a; color: white; text-decoration: none; border-radius: 4px; margin-top: 15px; }
+        .stats { background-color: #e9ecef; padding: 10px; border-radius: 4px; margin: 15px 0; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>📤 Article partagé</h1>
+        </div>
+        <div class="content">
+          <p>Bonjour,</p>
+          <p>Votre article <strong>"${articleData.title}"</strong> vient d'être partagé sur <strong>${platformName}</strong>.</p>
+          
+          <div class="article-box">
+            <h3>${articleData.title}</h3>
+            ${articleData.excerpt ? `<p>${articleData.excerpt.substring(0, 150)}...</p>` : ''}
+            <a href="${articleUrl}" class="button">Voir l'article</a>
+          </div>
+
+          <div class="stats">
+            <p><strong>Statistiques de l'article:</strong></p>
+            <p>👁️ Vues: ${articleData.views || 0}</p>
+            <p>📤 Partages: ${articleData.shareCount || 0}</p>
+          </div>
+
+          <p>Cordialement,<br>L'équipe XCAfrique</p>
+        </div>
+        <div style="text-align: center; padding: 20px; font-size: 12px; color: #666;">
+          <p>Cet email a été envoyé automatiquement. Merci de ne pas y répondre.</p>
+          <p>© ${new Date().getFullYear()} XCAfrique - Tous droits réservés</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  // Envoyer à l'auteur de l'article ou à l'email de contact par défaut
+  const recipientEmail = process.env.AUTHOR_EMAIL || process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
+
+  return await sendEmail({
+    to: recipientEmail,
+    from: process.env.CONTACT_EMAIL || 'contact@xcafrique.org',
+    subject: `📤 Votre article "${articleData.title}" a été partagé sur ${platformName}`,
+    html
+  });
+}
+
 
 module.exports = {
   initTransporter,
   sendEmail,
   sendContactConfirmation,
-  sendContactNotification
+  sendContactNotification,
+  sendShareNotification
 };
 
