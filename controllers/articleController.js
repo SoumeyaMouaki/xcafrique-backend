@@ -3,8 +3,6 @@ const Category = require('../models/Category');
 const { convertToEmbedUrl } = require('../utils/youtubeHelper');
 const { sendShareNotification } = require('../utils/emailService');
 const sseService = require('../services/sseService');
-const { sendShareNotification } = require('../utils/emailService');
-const sseService = require('../services/sseService');
 
 /**
  * Controller pour la gestion des articles
