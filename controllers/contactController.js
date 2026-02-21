@@ -15,21 +15,81 @@ const {
  * @access  Public
  */
 exports.sendMessage = async (req, res, next) => {
+  const startTime = Date.now();
+  
   try {
-    const contact = await Contact.create(req.body);
+    // Vérifier rapidement que MongoDB est connecté
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      // Si MongoDB n'est pas connecté, essayer de se reconnecter rapidement
+      const connectDB = require('../config/database');
+      try {
+        await Promise.race([
+          connectDB(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('MongoDB connection timeout')), 5000))
+        ]);
+      } catch (dbError) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ Erreur connexion MongoDB:', dbError.message);
+        }
+        return res.status(503).json({
+          success: false,
+          message: 'Service temporairement indisponible. Veuillez réessayer dans quelques instants.',
+          error: 'Database connection failed'
+        });
+      }
+    }
 
-    // Envoyer un email de confirmation à l'utilisateur (non bloquant, asynchrone)
+    // Créer le contact avec un timeout pour éviter les blocages
+    let contact;
+    try {
+      contact = await Promise.race([
+        Contact.create(req.body),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Contact creation timeout')), 8000)
+        )
+      ]);
+    } catch (createError) {
+      // Si la création échoue (timeout ou erreur), retourner une erreur rapide
+      if (createError.message.includes('timeout')) {
+        return res.status(504).json({
+          success: false,
+          message: 'Le traitement de votre message prend plus de temps que prévu. Votre message sera traité en arrière-plan.',
+          error: 'Request timeout'
+        });
+      }
+      throw createError; // Propager les autres erreurs
+    }
+
+    // Répondre IMMÉDIATEMENT au client (avant les emails)
+    const responseTime = Date.now() - startTime;
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ Contact créé et réponse envoyée en ${responseTime}ms`);
+    }
+    
+    res.status(201).json({
+      success: true,
+      message: 'Message envoyé avec succès. Nous vous répondrons dans les plus brefs délais.',
+      data: {
+        id: contact._id,
+        name: contact.name,
+        email: contact.email,
+        subject: contact.subject
+      }
+    });
+
+    // Envoyer les emails EN ARRIÈRE-PLAN (après la réponse)
+    // Utiliser setImmediate pour s'assurer que la réponse est partie avant
     setImmediate(() => {
+      // Email de confirmation à l'utilisateur
       sendContactConfirmation(contact.email, contact.name, contact.subject)
         .catch(err => {
           if (process.env.NODE_ENV === 'development') {
             console.error('Erreur envoi email confirmation contact:', err.message);
           }
         });
-    });
 
-    // Envoyer une notification à l'équipe (non bloquant, asynchrone)
-    setImmediate(() => {
+      // Notification à l'équipe
       sendContactNotification({
         name: contact.name,
         email: contact.email,
@@ -43,18 +103,24 @@ exports.sendMessage = async (req, res, next) => {
       });
     });
 
-    res.status(201).json({
-      success: true,
-      message: 'Message envoyé avec succès. Nous vous répondrons dans les plus brefs délais.',
-      data: {
-        id: contact._id,
-        name: contact.name,
-        email: contact.email,
-        subject: contact.subject
-      }
-    });
-
   } catch (error) {
+    // Gestion d'erreur améliorée
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Données invalides',
+        errors: Object.values(error.errors).map(e => e.message)
+      });
+    }
+
+    if (error.name === 'MongoServerError' || error.name === 'MongoError') {
+      return res.status(503).json({
+        success: false,
+        message: 'Service temporairement indisponible. Veuillez réessayer dans quelques instants.',
+        error: 'Database error'
+      });
+    }
+
     next(error);
   }
 };
