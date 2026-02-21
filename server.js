@@ -28,11 +28,21 @@ if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
 // Connexion à la base de données MongoDB
 // Gérer les erreurs de connexion sans faire crasher le serveur
 connectDB().catch((error) => {
-  console.error('Erreur lors de la connexion à MongoDB:', error.message);
+  // Messages d'erreur plus clairs
+  if (error.message && (error.message.includes('whitelist') || error.message.includes('IP'))) {
+    console.error('❌ Erreur MongoDB Atlas: IP non autorisée');
+    console.error('   🔧 Solution: MongoDB Atlas → Network Access → IP Access List');
+    console.error('   ➕ Ajoutez 0.0.0.0/0 pour autoriser toutes les IPs (ou les IPs Vercel spécifiques)');
+    console.error('   📖 Documentation: https://www.mongodb.com/docs/atlas/security-whitelist/');
+  } else {
+    console.error('Erreur lors de la connexion à MongoDB:', error.message);
+  }
+  
   // Sur Vercel, on continue quand même pour que l'erreur soit visible dans les logs
   // mais on ne fait pas crash le serveur
   if (process.env.VERCEL) {
     console.error('⚠️  Le serveur continue mais les requêtes nécessitant MongoDB échoueront');
+    console.error('⚠️  Vérifiez la configuration MongoDB Atlas (IP whitelist, credentials, etc.)');
   }
 });
 

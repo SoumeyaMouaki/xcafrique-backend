@@ -83,7 +83,19 @@ const connectDB = async () => {
     });
 
   } catch (error) {
-    console.error('Erreur de connexion à MongoDB:', error.message);
+    // Messages d'erreur plus clairs selon le type d'erreur
+    if (error.message.includes('whitelist') || error.message.includes('IP')) {
+      console.error('❌ Erreur de connexion MongoDB Atlas: IP non autorisée');
+      console.error('   Solution: Ajoutez 0.0.0.0/0 dans MongoDB Atlas → Network Access → IP Access List');
+      console.error('   Ou ajoutez les IPs Vercel spécifiques');
+      console.error('   Documentation: https://www.mongodb.com/docs/atlas/security-whitelist/');
+    } else if (error.message.includes('authentication')) {
+      console.error('❌ Erreur d\'authentification MongoDB: Vérifiez MONGODB_URI');
+      console.error('   Format attendu: mongodb+srv://username:password@cluster.mongodb.net/database');
+    } else {
+      console.error('❌ Erreur de connexion à MongoDB:', error.message);
+    }
+    
     // Sur Vercel, ne pas faire exit car cela bloque le déploiement
     // L'erreur sera visible dans les logs et les requêtes échoueront proprement
     if (!process.env.VERCEL) {

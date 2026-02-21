@@ -29,13 +29,27 @@ exports.sendMessage = async (req, res, next) => {
           new Promise((_, reject) => setTimeout(() => reject(new Error('MongoDB connection timeout')), 5000))
         ]);
       } catch (dbError) {
-        if (process.env.NODE_ENV === 'development') {
+        // Logger l'erreur pour le diagnostic
+        const isIPWhitelistError = dbError.message && (
+          dbError.message.includes('whitelist') || 
+          dbError.message.includes('IP') ||
+          dbError.message.includes('not whitelisted')
+        );
+        
+        if (isIPWhitelistError) {
+          console.error('❌ Erreur MongoDB: IP non autorisée dans Atlas');
+          console.error('   Solution: Ajoutez 0.0.0.0/0 dans MongoDB Atlas → Network Access');
+        } else {
           console.error('❌ Erreur connexion MongoDB:', dbError.message);
         }
+        
         return res.status(503).json({
           success: false,
           message: 'Service temporairement indisponible. Veuillez réessayer dans quelques instants.',
-          error: 'Database connection failed'
+          error: 'Database connection failed',
+          ...(isIPWhitelistError && {
+            hint: 'Vérifiez la configuration MongoDB Atlas (IP whitelist)'
+          })
         });
       }
     }
