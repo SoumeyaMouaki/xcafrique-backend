@@ -94,53 +94,86 @@ exports.sendMessage = async (req, res, next) => {
 
     // Envoyer les emails EN ARRIÈRE-PLAN (après la réponse)
     // Utiliser setImmediate pour s'assurer que la réponse est partie avant
-    setImmediate(() => {
+    setImmediate(async () => {
+      const emailStartTime = Date.now();
+      
       // Email de confirmation à l'utilisateur
       console.log(`📧 Tentative d'envoi email confirmation à ${contact.email}...`);
-      sendContactConfirmation(contact.email, contact.name, contact.subject)
-        .then(result => {
-          if (result.success) {
-            console.log(`✅ Email confirmation envoyé à ${contact.email}`);
-          } else {
-            console.error(`❌ Échec envoi email confirmation à ${contact.email}:`, result.error || result.message);
-            if (result.code) {
-              console.error(`   Code erreur: ${result.code}`);
-            }
+      try {
+        // Ajouter un timeout global pour éviter que l'email bloque indéfiniment
+        const emailTimeout = 90000; // 90 secondes max
+        const emailPromise = sendContactConfirmation(contact.email, contact.name, contact.subject);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Timeout email confirmation après ${emailTimeout}ms`)), emailTimeout)
+        );
+        
+        const result = await Promise.race([emailPromise, timeoutPromise]);
+        const emailDuration = Date.now() - emailStartTime;
+        
+        if (result && result.success) {
+          console.log(`✅ Email confirmation envoyé à ${contact.email} en ${emailDuration}ms`);
+          if (result.messageId) {
+            console.log(`   Message ID: ${result.messageId}`);
           }
-        })
-        .catch(err => {
-          console.error(`❌ Erreur envoi email confirmation contact (${contact.email}):`, err.message);
-          if (err.stack && process.env.NODE_ENV === 'development') {
-            console.error('   Stack:', err.stack);
+        } else if (result) {
+          console.error(`❌ Échec envoi email confirmation à ${contact.email} (${emailDuration}ms):`, result.error || result.message);
+          if (result.code) {
+            console.error(`   Code erreur: ${result.code}`);
           }
-        });
+        }
+      } catch (err) {
+        const emailDuration = Date.now() - emailStartTime;
+        console.error(`❌ Erreur envoi email confirmation contact (${contact.email}) après ${emailDuration}ms:`, err.message);
+        if (err.code) {
+          console.error(`   Code erreur: ${err.code}`);
+        }
+        if (err.stack && process.env.NODE_ENV === 'development') {
+          console.error('   Stack:', err.stack);
+        }
+      }
 
       // Notification à l'équipe
+      const notificationStartTime = Date.now();
       const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
       console.log(`📧 Tentative d'envoi email notification à ${contactEmail}...`);
-      sendContactNotification({
-        name: contact.name,
-        email: contact.email,
-        phone: contact.phone,
-        subject: contact.subject,
-        message: contact.message
-      })
-        .then(result => {
-          if (result.success) {
-            console.log(`✅ Email notification envoyé à ${contactEmail}`);
-          } else {
-            console.error(`❌ Échec envoi email notification à ${contactEmail}:`, result.error || result.message);
-            if (result.code) {
-              console.error(`   Code erreur: ${result.code}`);
-            }
-          }
-        })
-        .catch(err => {
-          console.error(`❌ Erreur envoi email notification contact (${contactEmail}):`, err.message);
-          if (err.stack && process.env.NODE_ENV === 'development') {
-            console.error('   Stack:', err.stack);
-          }
+      try {
+        // Ajouter un timeout global pour éviter que l'email bloque indéfiniment
+        const emailTimeout = 90000; // 90 secondes max
+        const emailPromise = sendContactNotification({
+          name: contact.name,
+          email: contact.email,
+          phone: contact.phone,
+          subject: contact.subject,
+          message: contact.message
         });
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error(`Timeout email notification après ${emailTimeout}ms`)), emailTimeout)
+        );
+        
+        const result = await Promise.race([emailPromise, timeoutPromise]);
+        const emailDuration = Date.now() - notificationStartTime;
+        
+        if (result && result.success) {
+          console.log(`✅ Email notification envoyé à ${contactEmail} en ${emailDuration}ms`);
+          if (result.messageId) {
+            console.log(`   Message ID: ${result.messageId}`);
+          }
+        } else if (result) {
+          console.error(`❌ Échec envoi email notification à ${contactEmail} (${emailDuration}ms):`, result.error || result.message);
+          if (result.code) {
+            console.error(`   Code erreur: ${result.code}`);
+          }
+        }
+      } catch (err) {
+        const emailDuration = Date.now() - notificationStartTime;
+        console.error(`❌ Erreur envoi email notification contact (${contactEmail}) après ${emailDuration}ms:`, err.message);
+        if (err.code) {
+          console.error(`   Code erreur: ${err.code}`);
+        }
+        if (err.stack && process.env.NODE_ENV === 'development') {
+          console.error('   Stack:', err.stack);
+        }
+      }
     });
 
   } catch (error) {

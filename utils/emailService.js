@@ -242,10 +242,8 @@ async function sendEmail(options) {
       console.log(`   Taille email: ${emailSizeKB} KB`);
     }
 
-    // Log avant l'envoi pour le diagnostic (seulement en dev)
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`📧 Tentative d'envoi d'email à ${options.to} (sujet: ${options.subject})...`);
-    }
+    // Log avant l'envoi pour le diagnostic (toujours en production aussi pour le suivi)
+    console.log(`📧 Tentative d'envoi d'email à ${options.to} (sujet: ${options.subject})...`);
     
     // Retry logic simplifié avec timeout plus court pour éviter les blocages
     const maxRetries = isVercel ? 2 : 1; // Réduire à 2 tentatives max sur Vercel
@@ -287,13 +285,11 @@ async function sendEmail(options) {
           clearTimeout(timeoutId);
         }
     
-        // Logger les envois réussis (seulement en dev ou si plusieurs tentatives)
-        if (process.env.NODE_ENV === 'development' || attempt > 1) {
-          if (attempt > 1) {
-            console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId);
-          } else {
-            console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
-          }
+        // Toujours logger les envois réussis (important pour le diagnostic)
+        if (attempt > 1) {
+          console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId);
+        } else {
+          console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
         }
         
         // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
