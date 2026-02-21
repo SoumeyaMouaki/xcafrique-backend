@@ -15,72 +15,13 @@ const {
  * @access  Public
  */
 exports.sendMessage = async (req, res, next) => {
-  const startTime = Date.now();
-  
   try {
-    // Vérifier rapidement que MongoDB est connecté
-    const mongoose = require('mongoose');
-    if (mongoose.connection.readyState !== 1) {
-      // Si MongoDB n'est pas connecté, essayer de se reconnecter rapidement
-      const connectDB = require('../config/database');
-      try {
-        await Promise.race([
-          connectDB(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('MongoDB connection timeout')), 5000))
-        ]);
-      } catch (dbError) {
-        // Logger l'erreur pour le diagnostic
-        const isIPWhitelistError = dbError.message && (
-          dbError.message.includes('whitelist') || 
-          dbError.message.includes('IP') ||
-          dbError.message.includes('not whitelisted')
-        );
-        
-        if (isIPWhitelistError) {
-          console.error('❌ Erreur MongoDB: IP non autorisée dans Atlas');
-          console.error('   Solution: Ajoutez 0.0.0.0/0 dans MongoDB Atlas → Network Access');
-        } else {
-          console.error('❌ Erreur connexion MongoDB:', dbError.message);
-        }
-        
-        return res.status(503).json({
-          success: false,
-          message: 'Service temporairement indisponible. Veuillez réessayer dans quelques instants.',
-          error: 'Database connection failed',
-          ...(isIPWhitelistError && {
-            hint: 'Vérifiez la configuration MongoDB Atlas (IP whitelist)'
-          })
-        });
-      }
-    }
-
-    // Créer le contact avec un timeout pour éviter les blocages
-    let contact;
-    try {
-      contact = await Promise.race([
-        Contact.create(req.body),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Contact creation timeout')), 8000)
-        )
-      ]);
-    } catch (createError) {
-      // Si la création échoue (timeout ou erreur), retourner une erreur rapide
-      if (createError.message.includes('timeout')) {
-        return res.status(504).json({
-          success: false,
-          message: 'Le traitement de votre message prend plus de temps que prévu. Votre message sera traité en arrière-plan.',
-          error: 'Request timeout'
-        });
-      }
-      throw createError; // Propager les autres erreurs
-    }
-
-    // Répondre IMMÉDIATEMENT au client (avant les emails)
-    const responseTime = Date.now() - startTime;
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`✅ Contact créé et réponse envoyée en ${responseTime}ms`);
-    }
+    // 1. Sauvegarder le message en base de données
+    const contact = await Contact.create(req.body);
     
+    console.log(`✅ Message de contact sauvegardé: ${contact.name} (${contact.email}) - ${contact.subject}`);
+    
+    // 2. Répondre IMMÉDIATEMENT au client
     res.status(201).json({
       success: true,
       message: 'Message envoyé avec succès. Nous vous répondrons dans les plus brefs délais.',
@@ -92,92 +33,51 @@ exports.sendMessage = async (req, res, next) => {
       }
     });
 
-    // Envoyer les emails EN ARRIÈRE-PLAN (après la réponse)
-    // Utiliser setImmediate pour s'assurer que la réponse est partie avant
-    setImmediate(async () => {
-      const emailStartTime = Date.now();
-      
-      // Email de confirmation à l'utilisateur
-      console.log(`📧 Tentative d'envoi email confirmation à ${contact.email}...`);
+    // 3. Envoyer les emails EN ARRIÈRE-PLAN (ne pas bloquer la réponse)
+    // Utiliser un setTimeout(0) pour s'assurer que la réponse est partie
+    setTimeout(async () => {
       try {
-        // Ajouter un timeout global pour éviter que l'email bloque indéfiniment
-        const emailTimeout = 90000; // 90 secondes max
-        const emailPromise = sendContactConfirmation(contact.email, contact.name, contact.subject);
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Timeout email confirmation après ${emailTimeout}ms`)), emailTimeout)
+        // Email de confirmation à l'utilisateur
+        console.log(`📧 Envoi email confirmation à ${contact.email}...`);
+        const confirmationResult = await sendContactConfirmation(
+          contact.email,
+          contact.name,
+          contact.subject
         );
         
-        const result = await Promise.race([emailPromise, timeoutPromise]);
-        const emailDuration = Date.now() - emailStartTime;
-        
-        if (result && result.success) {
-          console.log(`✅ Email confirmation envoyé à ${contact.email} en ${emailDuration}ms`);
-          if (result.messageId) {
-            console.log(`   Message ID: ${result.messageId}`);
-          }
-        } else if (result) {
-          console.error(`❌ Échec envoi email confirmation à ${contact.email} (${emailDuration}ms):`, result.error || result.message);
-          if (result.code) {
-            console.error(`   Code erreur: ${result.code}`);
-          }
+        if (confirmationResult.success) {
+          console.log(`✅ Email confirmation envoyé à ${contact.email}`);
+        } else {
+          console.error(`❌ Échec email confirmation à ${contact.email}:`, confirmationResult.error || confirmationResult.message);
         }
       } catch (err) {
-        const emailDuration = Date.now() - emailStartTime;
-        console.error(`❌ Erreur envoi email confirmation contact (${contact.email}) après ${emailDuration}ms:`, err.message);
-        if (err.code) {
-          console.error(`   Code erreur: ${err.code}`);
-        }
-        if (err.stack && process.env.NODE_ENV === 'development') {
-          console.error('   Stack:', err.stack);
-        }
+        console.error(`❌ Erreur email confirmation (${contact.email}):`, err.message);
       }
 
-      // Notification à l'équipe
-      const notificationStartTime = Date.now();
-      const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
-      console.log(`📧 Tentative d'envoi email notification à ${contactEmail}...`);
       try {
-        // Ajouter un timeout global pour éviter que l'email bloque indéfiniment
-        const emailTimeout = 90000; // 90 secondes max
-        const emailPromise = sendContactNotification({
+        // Email de notification à l'équipe
+        const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
+        console.log(`📧 Envoi email notification à ${contactEmail}...`);
+        const notificationResult = await sendContactNotification({
           name: contact.name,
           email: contact.email,
           phone: contact.phone,
           subject: contact.subject,
           message: contact.message
         });
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error(`Timeout email notification après ${emailTimeout}ms`)), emailTimeout)
-        );
         
-        const result = await Promise.race([emailPromise, timeoutPromise]);
-        const emailDuration = Date.now() - notificationStartTime;
-        
-        if (result && result.success) {
-          console.log(`✅ Email notification envoyé à ${contactEmail} en ${emailDuration}ms`);
-          if (result.messageId) {
-            console.log(`   Message ID: ${result.messageId}`);
-          }
-        } else if (result) {
-          console.error(`❌ Échec envoi email notification à ${contactEmail} (${emailDuration}ms):`, result.error || result.message);
-          if (result.code) {
-            console.error(`   Code erreur: ${result.code}`);
-          }
+        if (notificationResult.success) {
+          console.log(`✅ Email notification envoyé à ${contactEmail}`);
+        } else {
+          console.error(`❌ Échec email notification à ${contactEmail}:`, notificationResult.error || notificationResult.message);
         }
       } catch (err) {
-        const emailDuration = Date.now() - notificationStartTime;
-        console.error(`❌ Erreur envoi email notification contact (${contactEmail}) après ${emailDuration}ms:`, err.message);
-        if (err.code) {
-          console.error(`   Code erreur: ${err.code}`);
-        }
-        if (err.stack && process.env.NODE_ENV === 'development') {
-          console.error('   Stack:', err.stack);
-        }
+        console.error(`❌ Erreur email notification:`, err.message);
       }
-    });
+    }, 0);
 
   } catch (error) {
-    // Gestion d'erreur améliorée
+    // Gestion d'erreur
     if (error.name === 'ValidationError') {
       return res.status(400).json({
         success: false,
@@ -187,6 +87,7 @@ exports.sendMessage = async (req, res, next) => {
     }
 
     if (error.name === 'MongoServerError' || error.name === 'MongoError') {
+      console.error('❌ Erreur MongoDB:', error.message);
       return res.status(503).json({
         success: false,
         message: 'Service temporairement indisponible. Veuillez réessayer dans quelques instants.',
@@ -194,6 +95,7 @@ exports.sendMessage = async (req, res, next) => {
       });
     }
 
+    console.error('❌ Erreur inattendue:', error);
     next(error);
   }
 };
@@ -312,4 +214,3 @@ exports.updateMessageStatus = async (req, res, next) => {
     next(error);
   }
 };
-
