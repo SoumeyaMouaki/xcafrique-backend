@@ -16,17 +16,68 @@ const {
  */
 exports.sendMessage = async (req, res, next) => {
   try {
-    // 1. Sauvegarder le message en base de données
-    const contact = await Contact.create(req.body);
+    // 1. Vérifier et établir la connexion MongoDB si nécessaire
+    const mongoose = require('mongoose');
+    if (mongoose.connection.readyState !== 1) {
+      console.log('⚠️  MongoDB non connecté, tentative de connexion...');
+      const connectDB = require('../config/database');
+      try {
+        await Promise.race([
+          connectDB(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('MongoDB connection timeout')), 8000)
+          )
+        ]);
+        console.log('✅ MongoDB connecté');
+      } catch (dbError) {
+        console.error('❌ Impossible de se connecter à MongoDB:', dbError.message);
+        // Continuer quand même pour envoyer les emails (sans sauvegarder en base)
+        // Mais informer l'utilisateur que le message sera traité
+      }
+    }
+
+    // 2. Sauvegarder le message en base de données (si MongoDB est connecté)
+    let contact = null;
+    if (mongoose.connection.readyState === 1) {
+      try {
+        contact = await Promise.race([
+          Contact.create(req.body),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Contact creation timeout')), 5000)
+          )
+        ]);
+        console.log(`✅ Message de contact sauvegardé: ${contact.name} (${contact.email}) - ${contact.subject}`);
+      } catch (createError) {
+        console.error('❌ Erreur lors de la sauvegarde du contact:', createError.message);
+        // Continuer pour envoyer les emails même si la sauvegarde échoue
+        contact = {
+          _id: null,
+          name: req.body.name,
+          email: req.body.email,
+          subject: req.body.subject,
+          phone: req.body.phone,
+          message: req.body.message
+        };
+      }
+    } else {
+      // Si MongoDB n'est pas connecté, utiliser les données de la requête
+      contact = {
+        _id: null,
+        name: req.body.name,
+        email: req.body.email,
+        subject: req.body.subject,
+        phone: req.body.phone,
+        message: req.body.message
+      };
+      console.log('⚠️  MongoDB non disponible, emails seront envoyés sans sauvegarde en base');
+    }
     
-    console.log(`✅ Message de contact sauvegardé: ${contact.name} (${contact.email}) - ${contact.subject}`);
-    
-    // 2. Répondre IMMÉDIATEMENT au client
+    // 3. Répondre IMMÉDIATEMENT au client
     res.status(201).json({
       success: true,
       message: 'Message envoyé avec succès. Nous vous répondrons dans les plus brefs délais.',
       data: {
-        id: contact._id,
+        id: contact._id || 'temporary',
         name: contact.name,
         email: contact.email,
         subject: contact.subject
