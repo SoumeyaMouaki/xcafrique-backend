@@ -285,12 +285,12 @@ async function sendEmail(options) {
           clearTimeout(timeoutId);
         }
     
-        // Toujours logger les envois réussis (important pour le diagnostic)
-        if (attempt > 1) {
-          console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId);
-        } else {
-          console.log(`✅ Email envoyé à ${options.to}:`, info.messageId);
-        }
+    // Toujours logger les envois réussis (important pour le diagnostic)
+    if (attempt > 1) {
+      console.log(`✅ Email envoyé à ${options.to} après ${attempt} tentative(s):`, info.messageId || 'pas de messageId');
+    } else {
+      console.log(`✅ Email envoyé à ${options.to}:`, info.messageId || 'pas de messageId');
+    }
         
         // Fermer la connexion immédiatement après l'envoi pour éviter les timeouts
         // Important surtout sur Vercel/serverless
