@@ -82,7 +82,64 @@ exports.sendMessage = async (req, res, next) => {
       console.log('⚠️  MongoDB non disponible, emails seront envoyés sans sauvegarde en base');
     }
     
-    // 3. Répondre IMMÉDIATEMENT au client
+    // 3. Envoyer les emails AVANT la réponse (obligatoire sur Vercel)
+    // Sur Vercel, une fois la réponse envoyée la fonction peut s'arrêter :
+    // les emails en arrière-plan ne partent jamais. On les envoie donc ici.
+    const EMAIL_TIMEOUT_MS = 25000; // 25s max pour les 2 emails (reste sous la limite Vercel)
+    console.log(`📧 Envoi des emails pour ${contact.email} (timeout ${EMAIL_TIMEOUT_MS}ms)...`);
+
+    const sendAllEmails = async () => {
+      const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
+
+      let confirmationResult = { success: false };
+      let notificationResult = { success: false };
+
+      try {
+        console.log(`📧 Envoi email confirmation à ${contact.email}...`);
+        const t0 = Date.now();
+        confirmationResult = await sendContactConfirmation(contact.email, contact.name, contact.subject);
+        console.log(confirmationResult.success
+          ? `✅ Email confirmation envoyé en ${Date.now() - t0}ms`
+          : `❌ Échec confirmation: ${confirmationResult.error || confirmationResult.message}`);
+      } catch (err) {
+        console.error(`❌ Exception email confirmation:`, err.message);
+      }
+
+      try {
+        console.log(`📧 Envoi email notification à ${contactEmail}...`);
+        const t1 = Date.now();
+        notificationResult = await sendContactNotification({
+          name: contact.name,
+          email: contact.email,
+          phone: contact.phone,
+          subject: contact.subject,
+          message: contact.message
+        });
+        console.log(notificationResult.success
+          ? `✅ Email notification envoyé en ${Date.now() - t1}ms`
+          : `❌ Échec notification: ${notificationResult.error || notificationResult.message}`);
+      } catch (err) {
+        console.error(`❌ Exception email notification:`, err.message);
+      }
+
+      console.log(`📧 Fin envoi emails (confirmation: ${confirmationResult.success}, notification: ${notificationResult.success})`);
+    };
+
+    try {
+      await Promise.race([
+        sendAllEmails(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Email send timeout')), EMAIL_TIMEOUT_MS))
+      ]);
+    } catch (emailErr) {
+      if (emailErr.message === 'Email send timeout') {
+        console.error(`⚠️ Envoi emails interrompu après ${EMAIL_TIMEOUT_MS}ms (timeout)`);
+      } else {
+        console.error('⚠️ Erreur lors de l\'envoi des emails:', emailErr.message);
+      }
+      // On répond quand même succès au client : le message est sauvegardé
+    }
+
+    // 4. Répondre au client
     console.log(`✅ Réponse envoyée au client pour ${contact.email}`);
     res.status(201).json({
       success: true,
@@ -94,84 +151,6 @@ exports.sendMessage = async (req, res, next) => {
         subject: contact.subject
       }
     });
-
-    // 4. Envoyer les emails EN ARRIÈRE-PLAN (ne pas bloquer la réponse)
-    // Utiliser un setTimeout pour s'assurer que la réponse est partie
-    console.log(`📧 Planification envoi emails en arrière-plan pour ${contact.email}...`);
-    setTimeout(async () => {
-      console.log(`📧 [BACKGROUND] Début traitement emails pour ${contact.email}`);
-      
-      try {
-        // Email de confirmation à l'utilisateur
-        console.log(`📧 [BACKGROUND] Envoi email confirmation à ${contact.email}...`);
-        const confirmationStart = Date.now();
-        const confirmationResult = await sendContactConfirmation(
-          contact.email,
-          contact.name,
-          contact.subject
-        );
-        const confirmationDuration = Date.now() - confirmationStart;
-        
-        if (confirmationResult && confirmationResult.success) {
-          console.log(`✅ [BACKGROUND] Email confirmation envoyé à ${contact.email} en ${confirmationDuration}ms`);
-          if (confirmationResult.messageId) {
-            console.log(`   Message ID: ${confirmationResult.messageId}`);
-          }
-        } else {
-          const errorMsg = confirmationResult?.error || confirmationResult?.message || 'Erreur inconnue';
-          console.error(`❌ [BACKGROUND] Échec email confirmation à ${contact.email} (${confirmationDuration}ms):`, errorMsg);
-          if (confirmationResult?.code) {
-            console.error(`   Code erreur: ${confirmationResult.code}`);
-          }
-        }
-      } catch (err) {
-        console.error(`❌ [BACKGROUND] Exception email confirmation (${contact.email}):`, err.message);
-        if (err.code) {
-          console.error(`   Code: ${err.code}`);
-        }
-        if (err.stack) {
-          console.error(`   Stack: ${err.stack.substring(0, 500)}`);
-        }
-      }
-
-      try {
-        // Email de notification à l'équipe
-        const contactEmail = process.env.CONTACT_EMAIL || 'contact@xcafrique.org';
-        console.log(`📧 [BACKGROUND] Envoi email notification à ${contactEmail}...`);
-        const notificationStart = Date.now();
-        const notificationResult = await sendContactNotification({
-          name: contact.name,
-          email: contact.email,
-          phone: contact.phone,
-          subject: contact.subject,
-          message: contact.message
-        });
-        const notificationDuration = Date.now() - notificationStart;
-        
-        if (notificationResult && notificationResult.success) {
-          console.log(`✅ [BACKGROUND] Email notification envoyé à ${contactEmail} en ${notificationDuration}ms`);
-          if (notificationResult.messageId) {
-            console.log(`   Message ID: ${notificationResult.messageId}`);
-          }
-        } else {
-          const errorMsg = notificationResult?.error || notificationResult?.message || 'Erreur inconnue';
-          console.error(`❌ [BACKGROUND] Échec email notification à ${contactEmail} (${notificationDuration}ms):`, errorMsg);
-          if (notificationResult?.code) {
-            console.error(`   Code erreur: ${notificationResult.code}`);
-          }
-        }
-      } catch (err) {
-        console.error(`❌ [BACKGROUND] Exception email notification:`, err.message);
-        if (err.code) {
-          console.error(`   Code: ${err.code}`);
-        }
-        if (err.stack) {
-          console.error(`   Stack: ${err.stack.substring(0, 500)}`);
-        }
-      }
-      
-      console.log(`📧 [BACKGROUND] Fin traitement emails pour ${contact.email}`);
-    }, 100); // Augmenter légèrement pour s'assurer que la réponse est partie
 
   } catch (error) {
     // Gestion d'erreur
